@@ -11,6 +11,8 @@ class SubMatrix {
                 int startY;
                 int endY;
                 int sum;
+
+                std::string toString();
 };
 
 
@@ -42,6 +44,8 @@ class ComputedMatrix : public Matrix
                 ~ComputedMatrix();
                 SubMatrix *maxSubarray();
                 inline Matrix getCumulMatrix() { return cumulMatrix; }
+
+                static SubMatrix kandane(std::vector<int> line); //XXX should be private
 
         private:
                 Matrix cumulMatrix;

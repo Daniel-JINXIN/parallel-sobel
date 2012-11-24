@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <sstream>
 
 #include "max_subarray.hpp"
 
@@ -8,6 +9,168 @@ using namespace std;
 
 
 void print_matrix(vector<vector<int>> mat);
+vector<vector<int>> parseFile(string fileName);
+Matrix computeCumulMatrix(const Matrix& mat);
+
+
+
+Matrix::Matrix() {}
+Matrix::~Matrix() {}
+
+
+
+ComputedMatrix::ComputedMatrix(std::vector<std::vector<int>> _data)
+        : Matrix(_data)
+{
+        cumulMatrix = computeCumulMatrix(*this);
+}
+
+
+ComputedMatrix::~ComputedMatrix() {}
+
+
+
+
+
+
+
+SubMatrix ComputedMatrix::kandane(int startLine, int endLine) const
+{
+        vector<int> line(data[endLine]);
+
+        if (startLine != 0) {
+                for (unsigned int i = 0; i < line.size(); i++) {
+                        line[i] -= data[startLine-1][i];
+                }
+        }
+
+        return kandane(line);
+}
+
+
+
+
+SubMatrix ComputedMatrix::kandane(vector<int> line)
+{
+        SubMatrix max;
+        int tmp_max_sum = 0;
+        int tmp_start = 0;
+        max.startX = 0;
+        max.endX = 0;
+        max.startY = 0;
+        max.endY = 0;
+        max.sum = -32001;
+
+        for (unsigned int tmp_end = 0; tmp_end < line.size(); tmp_end++) {
+                tmp_max_sum += line[tmp_end];
+                if (tmp_max_sum > max.sum) {
+                        max.sum = tmp_max_sum;
+                        max.startX = tmp_start;
+                        max.endX = tmp_end;
+                }
+
+                if (tmp_max_sum < 0) {
+                        tmp_max_sum = 0;
+                        tmp_start = tmp_end + 1;
+                }
+        }
+
+        return max;
+}
+
+
+
+
+std::string SubMatrix::toString()
+{
+        std::stringstream s_str;
+
+        s_str << "(" << startX << ", " << endX << "), (" << startY << ", " << endY << "), sum = " << sum;
+        return s_str.str();
+}
+
+
+Matrix::Matrix(vector<vector<int>> _data)
+        : height(_data.size()), width(_data[1].size()), data(_data)
+{}
+
+Matrix::Matrix(const Matrix& m)
+        : height(m.height), width(m.width), data(m.data)
+{
+}
+
+
+
+Matrix computeCumulMatrix(const Matrix& mat)
+{
+        /* Column by column for parallelism */
+        int matSize = mat.getWidth();
+
+        Matrix cumulMat(mat);
+
+        for (int col = 0; col < matSize; col++) {
+                for (int line = 1; line < matSize; line++) {
+                        cumulMat.setDataAt(line, col, cumulMat.getDataAt(line-1, col) + mat.getDataAt(line, col));
+                }
+        }
+
+        return cumulMat;
+}
+
+
+
+
+
+
+int main(int argc, const char *argv[])
+{
+        if (argc != 2) {
+                printf("Usage: %s fileName\n", argv[0]);
+                exit(1);
+        }
+
+        string fileName = argv[1];
+        vector<vector<int>> matAsVect;
+        try {
+                matAsVect = parseFile(fileName);
+        } catch (const std::exception &ex) {
+                cout << "Could not parse file " << fileName << endl;
+                throw;
+        }
+
+
+        ComputedMatrix mat(matAsVect);
+
+        print_matrix(matAsVect);
+        cout << endl << endl;
+        print_matrix(mat.getData());
+        cout << endl << endl;
+        print_matrix(mat.getCumulMatrix().getData());
+
+        //SubMatrix maxSubarray = mat.maxSubarray();
+
+        SubMatrix max = ComputedMatrix::kandane(matAsVect[0]);
+        cout << max.toString() << endl;
+
+        return 0;
+}
+
+
+
+
+
+void print_matrix(vector<vector<int>> mat)
+{
+        for (auto& v : mat) {
+                for (auto& item : v) {
+                        cout << item << " ";
+                }
+                cout << endl;
+        }
+}
+
+
+
 
 /* Can throw exceptions */
 vector<vector<int>> parseFile(string fileName)
@@ -31,101 +194,6 @@ vector<vector<int>> parseFile(string fileName)
 
         return retVect;
 }
-
-
-
-Matrix::Matrix(vector<vector<int>> _data)
-        : height(_data.size()), width(_data[1].size()), data(_data)
-{}
-
-Matrix::Matrix(const Matrix& m)
-        : height(m.height), width(m.width), data(m.data)
-{
-}
-
-
-
-Matrix ComputeCumulMatrix(const Matrix& mat)
-{
-        /* Column by column for parallelism */
-        int matSize = mat.getWidth();
-
-        cout << matSize << endl;
-
-        Matrix cumulMat(mat);
-
-        for (int col = 0; col < matSize; col++) {
-                for (int line = 1; line < matSize; line++) {
-                        cout << "cumulMat[" << line << "][" << col << "] = "
-                                << cumulMat.getDataAt(line-1, col) + mat.getDataAt(line, col) << endl;
-                        cumulMat.setDataAt(line, col, cumulMat.getDataAt(line-1, col) + mat.getDataAt(line, col));
-                }
-        }
-
-        cout << "Before returning cumulMat" << endl;
-        print_matrix(cumulMat.getData());
-        return cumulMat;
-}
-
-
-
-Matrix::Matrix() {}
-Matrix::~Matrix() {}
-
-
-
-ComputedMatrix::ComputedMatrix(std::vector<std::vector<int>> _data)
-        : Matrix(_data)
-{
-        cumulMatrix = ComputeCumulMatrix(*this);
-}
-
-
-ComputedMatrix::~ComputedMatrix() {}
-
-
-
-
-int main(int argc, const char *argv[])
-{
-        string fileName = argv[1];
-        vector<vector<int>> matAsVect;
-        try {
-                matAsVect = parseFile(fileName);
-        } catch (const std::exception &ex) {
-                cout << "Could not parse file " << fileName << endl;
-                throw;
-        }
-
-
-        ComputedMatrix mat(matAsVect);
-
-        print_matrix(matAsVect);
-        cout << endl << endl;
-        print_matrix(mat.getData());
-        cout << endl << endl;
-        print_matrix(mat.getCumulMatrix().getData());
-
-        //SubMatrix maxSubarray = mat.maxSubarray();
-
-        return 0;
-}
-
-
-
-
-
-void print_matrix(vector<vector<int>> mat)
-{
-        for (auto& v : mat) {
-                for (auto& item : v) {
-                        cout << item << " ";
-                }
-                cout << endl;
-        }
-}
-
-
 
 
 
