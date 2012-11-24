@@ -12,6 +12,7 @@ class SubMatrix {
                 int endY;
                 int sum;
 
+                SubMatrix(int _startX, int _endX, int _startY, int _endY, int _sum);
                 std::string toString();
 };
 
@@ -29,6 +30,8 @@ class Matrix
                 inline int getHeight() const { return height; }
                 inline int getDataAt(int i, int j) const { return data[i][j]; }
                 inline void setDataAt(int i, int j, int val) { data[i][j] = val; }
+
+                inline std::vector<int>& operator[] (unsigned int i) { return data[i]; }
         protected:
                 int height;
                 int width;
@@ -42,7 +45,7 @@ class ComputedMatrix : public Matrix
         public:
                 ComputedMatrix(std::vector<std::vector<int>> _data);
                 ~ComputedMatrix();
-                SubMatrix *maxSubarray();
+                SubMatrix maxSubarray();
                 inline Matrix getCumulMatrix() { return cumulMatrix; }
 
                 static SubMatrix kandane(std::vector<int> line); //XXX should be private
@@ -51,7 +54,7 @@ class ComputedMatrix : public Matrix
                 Matrix cumulMatrix;
 
                 /* Computes the max subarray that spans between startLine and endLine */
-                SubMatrix kandane(int startLine, int endLine) const;
+                SubMatrix kandane(int startLine, int endLine);
 };
 
 
