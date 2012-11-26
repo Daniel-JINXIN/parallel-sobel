@@ -28,6 +28,7 @@
                       fprintf(stderr, "\n")
 
 #define check(A, ...) if(!(A)) { log_err(__VA_ARGS__); errno=0; goto error; }
+#define check_warn(A, ...) if(!(A)) { log_warn(__VA_ARGS__);}
 
 #define sentinel(...) { log_err(__VA_ARGS__); errno=0; goto error; }
 
