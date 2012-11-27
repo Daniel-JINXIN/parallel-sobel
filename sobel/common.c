@@ -16,6 +16,7 @@ int decode_image(const char *srcFileName, struct image *pImage)
 {
         check_null(pImage);
         check_null(srcFileName);
+{
 
         unsigned int ret;
         ret = lodepng_decode32_file(&pImage->data, &pImage->width, &pImage->height, srcFileName);
@@ -28,10 +29,15 @@ error:
         free_and_null(pImage->data);
         return -1;
 }
+}
 
 
 
 
+/*
+ * Encodes a image that is known to be in RGBA format by calling lodepng.
+ * Will fail silently if the image is in the wrong format (should be checked upstream).
+ */
 static inline int encode_image_rgba(const char *destFileName, struct image *pImage)
 {
         int ret = lodepng_encode32_file(destFileName, pImage->data,
@@ -45,6 +51,10 @@ error:
 
 
 
+/*
+ * Encodes an image to a file by first transforming it from greyscale to RGBA.
+ * Fails silently if the image is not in greyscale
+ */
 static inline int encode_image_greyscale(const char *destFileName, struct image *pImage)
 {
         unsigned int ret;
@@ -64,6 +74,9 @@ error:
 
 
 
+/*
+ * Encode any king of image. See public header for full doc
+ */
 int encode_image(const char *destFileName, struct image *pImage)
 {
         check_null(pImage);
@@ -88,6 +101,10 @@ error:
 
 
 
+
+/*
+ * Simple initialiszation of the X-direction gradient kernel
+ */
 static inline int initKernelX(kernel_t kernelX)
 {
         kernelX[0][0] = -1;
@@ -106,6 +123,9 @@ static inline int initKernelX(kernel_t kernelX)
 }
 
 
+/*
+ * Simple initialiszation of the X-direction gradient kernel
+ */
 static inline int initKernelY(kernel_t kernelY)
 {
         kernelY[0][0] = -1;
@@ -126,7 +146,8 @@ static inline int initKernelY(kernel_t kernelY)
 
 
 
-/* Simple extension from Grey values to R = G = B = grey, and A = 0 */
+/* Simple extension from Grey values to R = G = B = grey, and A = 0
+ * See header file for full documentation. */
 int greyScale_to_RGBA(struct image *pGSImage, struct image *pRGBAImage)
 {
         check (pGSImage->type == GreyScale,
@@ -161,7 +182,10 @@ error:
 
 
 
-/* Takes the mean of R, G, B ad grey value. Alpha channel is ignored */
+/*
+ * Takes the mean of R, G, B ad grey value. Alpha channel is ignored
+ * See header file for full documentation
+ */
 int RGBA_to_greyScale(struct image *pRGBAImage, struct image *pGSImage)
 {
         check (pRGBAImage->type == RGBA, "The image to convert must be RGBA, %s found",
@@ -200,6 +224,7 @@ error:
 
 
 
+// This is a hack to allow some testing. XXX could be removed.
 #ifndef REMOVE_MAIN
 int main(int argc, const char *argv[])
 {
@@ -232,31 +257,20 @@ int main(int argc, const char *argv[])
         ret = decode_image(inFileName, &inImage);
         check (ret == 0, "Image decoding failed");
 
-
         ret = RGBA_to_greyScale(&inImage, &greyScaleImage);
         check (ret == 0, "Failed to convert the image in greyscale");
 
-        /*print_mat(&greyScaleImage); //XXX*/
-
+        /**** Interesting stuff starts here ****/
         double startTime = omp_get_wtime();
         ret = convolution3(&greyScaleImage, kernelX, &gradX);
         check (ret == 0, "Convolution with kernel X failed");
 
-        /*puts("\ngradX: ");*/
-        /*print_mat(&gradX); //XXX*/
-
         ret = convolution3(&greyScaleImage, kernelY, &gradY);
         check (ret == 0, "Convolution with kernel Y failed");
-
-        /*puts("\nGradY:");*/
-        /*print_mat(&gradY); //XXX*/
 
         ret = gradient(&gradX, &gradY, &outImage);
         check (ret == 0, "Computation of gradient failed");
         double endTime = omp_get_wtime();
-
-        /*puts("\noutImage :");*/
-        /*print_mat(&outImage); //XXX*/
 
         ret = encode_image(outFileName, &outImage);
         check (ret == 0, "Error while storing image to disk");
@@ -267,43 +281,5 @@ int main(int argc, const char *argv[])
 
 error:
         return 1;
-}
-#endif
-
-
-
-
-
-
-#if 0
-int main(int argc, const char *argv[])
-{
-        int ret;
-        if (argc < 3) {
-                printf("Usage: %s inFileName outFileName\n", argv[0]);
-                exit(1);
-        }
-
-        const char *inFileName  = argv[1];
-        const char *outFileName = argv[2];
-
-        struct matrix baseImage      = MATRIX_INITIALIZER;
-        struct matrix greyScaleImage = MATRIX_INITIALIZER;
-
-        ret = decode_image(inFileName, &baseImage);
-        check (ret == 0, "Failed to decode image");
-
-        ret = RGBA_to_greyScale(&baseImage, &greyScaleImage);
-        check (ret == 0, "Failed to convert to grey scale");
-        
-        ret = encode_image(outFileName, &greyScaleImage);
-        check (ret == 0, "Failed to write image");
-
-        return 0;
-
-error:
-        free_and_null(baseImage.data);
-        free_and_null(greyScaleImage.data);
-        return -1;
 }
 #endif

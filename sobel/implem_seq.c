@@ -5,6 +5,9 @@
 
 #include "sobel.h"
 
+
+
+
 /* Compute one value by convoluting a 3x3 kernel over a 3x3 portion of the image
  *
  * in: pInImage         Pointer to the image to convolute
@@ -45,13 +48,6 @@ static inline void convolution_3_by_3(struct image *const pInImage, kernel_t ker
                                       uint32_t row, uint32_t col,
                                       int16_t *restrict pPixel)
 {
-        //XXX for debug !
-        if (row == 0 || col == 0) {
-                if (row == 0) log_err("row should not be 0 !");
-                if (row == 0) log_err("row should not be 0 !");
-                return;
-        }
-
         uint32_t w = pInImage->width;
         int16_t acc = 0;
         acc += kernel[0][0] * pInImage->data[(row + 1)*w + col + 1];
@@ -71,6 +67,9 @@ static inline void convolution_3_by_3(struct image *const pInImage, kernel_t ker
 
 
 /*
+ * XXX on pourrait aussi étendre virtuellement la matrice de base avec des 0 sur
+ * XXX les bords. Ca devrait marcher, et c'est plus propre. Peut-être pas le plus
+ * XXX important pour l'instant.
  ***** Edge conditions *****
  * We see from the above formula that there is a problem for i = 0, j = 0, i = M, j = N
  * where the image is of size MxN. We will simply ignore them while computing the
@@ -79,18 +78,19 @@ static inline void convolution_3_by_3(struct image *const pInImage, kernel_t ker
  * For instance, if the following matrix resulted from the convolution (where ? represent
  * values that could not be computed):
  *
- *    ? ? ? ? ?
- *    ? 1 2 3 ?                                         1 1 2 3 3
- *    ? 4 5 6 ? it would be artificially extented to    1 1 2 3 3
- *    ? 7 8 9 ?                                         4 4 5 6 6
- *    ? ? ? ? ?                                         7 7 8 9 9
- *                                                      7 7 8 9 9
+ *    ? ? ? ? ?                                           1 1 2 3 3
+ *    ? 1 2 3 ?                                           1 1 2 3 3
+ *    ? 4 5 6 ?   it would be artificially extented to    4 4 5 6 6
+ *    ? 7 8 9 ?                                           7 7 8 9 9
+ *    ? ? ? ? ?                                           7 7 8 9 9
+ *                                                      
  */
 int convolution3(struct image *pInImage, kernel_t kernel, struct matrix *pOutMatrix)
 {
         check_null(pInImage);
         check_null(pOutMatrix);
         check_warn(pOutMatrix->data == NULL, "Overwrite non-null pointer possible leak");
+{
 
 
         /* First, allocate memory for the outMatrix, and set its features */
@@ -101,9 +101,8 @@ int convolution3(struct image *pInImage, kernel_t kernel, struct matrix *pOutMat
 
 
         /* Make the convolution where it's possible */
-        //XXX faire dans le bon ordre pour que les caches soient contents
-        for (uint32_t col = 1; col < pInImage->width - 1; col++) {
-                for (uint32_t row = 1; row < pInImage->height - 1; row++) {
+        for (uint32_t row = 1; row < pInImage->height - 1; row++) {
+                for (uint32_t col = 1; col < pInImage->width - 1; col++) {
                         convolution_3_by_3(pInImage, kernel, row, col,
                                            &pOutMatrix->data[row*pOutMatrix->width + col]);
                 }
@@ -132,6 +131,7 @@ int convolution3(struct image *pInImage, kernel_t kernel, struct matrix *pOutMat
 error:
         reset_matrix(pOutMatrix);
         return -1;
+}
 }
 
 

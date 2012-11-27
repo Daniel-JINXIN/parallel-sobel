@@ -1,8 +1,7 @@
 CC=gcc
 LD=gcc
 INCLUDES = -I. -I./third_party/lodepng/
-#CFLAGS = -O2 -std=c99 -Wall -Wextra -c -fopenmp $(INCLUDES)
-CFLAGS = -O0 -g -std=c99 -Wall -Wextra -c -fopenmp $(INCLUDES)
+CFLAGS = -O3 -std=c99 -Wall -Wextra -c -fopenmp $(INCLUDES)
 LDFLAGS = -lgomp -lm
 
 EXES = omp_version cuda_version seq_version
@@ -27,6 +26,7 @@ seq_version: implem_seq.o common.o $(LODEPNG_OBJ)
 cuda_version: implem_cuda.o common.o $(LODEPNG_OBJ)
 	$(LD) $(LDFLAGS) $^ -o $@
 
+implem_seq_test: common.c implem_seq.c sobel.h
 implem_seq_test: implem_seq_test.o $(LODEPNG_OBJ)
 	$(LD) $(LDFLAGS) $^ -o $@
 
