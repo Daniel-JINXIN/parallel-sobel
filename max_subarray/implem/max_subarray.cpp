@@ -2,6 +2,7 @@
 #include <fstream>
 #include <vector>
 #include <sstream>
+#include <omp.h>
 
 #include "max_subarray.hpp"
 
@@ -32,21 +33,27 @@ ComputedMatrix::ComputedMatrix(std::vector<std::vector<int>> _data)
 ComputedMatrix::~ComputedMatrix() {}
 
 
-
-
-
 SubMatrix ComputedMatrix::maxSubarray()
 {
         SubMatrix max(0, 0, 0, 0, -32001);
-// omp parallel for ici
+		
+		omp_lock_t lck;
+		omp_init_lock(&lck);
+		
         for (int i = 0; i < height; i++) {
+	#pragma omp parallel for shared(max)
                 for (int j = i; j < height; j++) {
                         SubMatrix tmp_max = kandane(i, j);
-                        if (tmp_max.sum > max.sum) {
+						
+                        if (tmp_max.sum > max.sum) {							
+							omp_set_lock(&lck);
                                 max = tmp_max;
+							omp_unset_lock(&lck);
                         }
                 }
         }
+		
+		omp_destroy_lock(&lck);
 
         return max;
 }
@@ -131,11 +138,11 @@ Matrix::Matrix(const Matrix& m)
 // Si c'est trop lent, essayer de tranposer la matrice pour la parcourir en lignes.
 Matrix computeCumulMatrix(const Matrix& mat)
 {
-        /* Column by column for parallelism */
         int matSize = mat.getWidth();
 
         Matrix cumulMat(mat);
-
+	/*Paralelize the work with at most a thread per column of the matrix*/
+	#pragma omp parallel for num_threads(matSize) shared(cumulMat)
         for (int col = 0; col < matSize; col++) {
                 for (int line = 1; line < matSize; line++) {
                         cumulMat.setDataAt(line, col, cumulMat.getDataAt(line-1, col) + mat.getDataAt(line, col));
@@ -165,11 +172,22 @@ int main(int argc, const char *argv[])
                 cout << "Could not parse file " << fileName << endl;
                 throw;
         }
-
-
+	
+		double timer1 = 0;
+		double timer2 = 0;
+		double elapsed_time = 0;
+		
+		/*Beginning of work to be parallelized*/
+		timer1 = omp_get_wtime();
         ComputedMatrix mat(matAsVect);
 
         SubMatrix maxSubarray = mat.maxSubarray();
+		timer2 = omp_get_wtime();
+		/*End of work to be parallelized*/
+		
+		elapsed_time =timer2 - timer1;
+		printf("Elapsed time was: %f" elapsed_time);
+		
         print_matrix(mat.getData());
         cout << endl;
         cout << maxSubarray.toString() << endl;
