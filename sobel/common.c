@@ -12,7 +12,7 @@
 
 
 /* We make use of the awesome lodepng library, see in third_party/ */
-int decode_image(const char *srcFileName, struct matrix *pImage)
+int decode_image(const char *srcFileName, struct image *pImage)
 {
         check_null(pImage);
         check_null(srcFileName);
@@ -32,10 +32,10 @@ error:
 
 
 
-static inline int encode_image_rgba(const char *destFileName, struct matrix *pImage)
+static inline int encode_image_rgba(const char *destFileName, struct image *pImage)
 {
         int ret = lodepng_encode32_file(destFileName, pImage->data,
-                                    pImage->width, pImage->height);
+                                        pImage->width, pImage->height);
         check (ret == 0, "Failed to write image to file %s", destFileName);
         
         return 0;
@@ -45,10 +45,10 @@ error:
 
 
 
-static inline int encode_image_greyscale(const char *destFileName, struct matrix *pImage)
+static inline int encode_image_greyscale(const char *destFileName, struct image *pImage)
 {
         unsigned int ret;
-        struct matrix RGBAImage = MATRIX_INITIALIZER;
+        struct image RGBAImage = IMAGE_INITIALIZER;
         RGBAImage.type = RGBA;
         
         ret = greyScale_to_RGBA(pImage, &RGBAImage);
@@ -64,11 +64,11 @@ error:
 
 
 
-int encode_image(const char *destFileName, struct matrix *pImage)
+int encode_image(const char *destFileName, struct image *pImage)
 {
         check_null(pImage);
         check_null(destFileName);
-        check (pImage->type != Irrelevant, "The image must be either RGBA or GreyScale");
+        check (pImage->type != Unknown, "The image must be either RGBA or GreyScale");
 
         switch (pImage->type) {
                 case RGBA:
@@ -88,65 +88,49 @@ error:
 
 
 
-static inline int initKernelX(struct matrix *kernelX)
+static inline int initKernelX(kernel_t kernelX)
 {
-        kernelX->data = calloc(3 * 3, sizeof(char));
-        check_mem (kernelX->data);
+        kernelX[0][0] = -1;
+        kernelX[0][1] = 0;
+        kernelX[0][2] = 1;
 
-        kernelX->width  = 3;
-        kernelX->height = 3;
+        kernelX[1][0] = -2;
+        kernelX[1][1] = 0;
+        kernelX[1][2] = 2;
 
-        kernelX->data[0] = -1;
-        kernelX->data[1] = 0;
-        kernelX->data[2] = 1;
-
-        kernelX->data[3] = -2;
-        kernelX->data[4] = 0;
-        kernelX->data[5] = 2;
-
-        kernelX->data[6] = -1;
-        kernelX->data[7] = 0;
-        kernelX->data[8] = 1;
+        kernelX[2][0] = -1;
+        kernelX[2][1] = 0;
+        kernelX[2][2] = 1;
 
         return 0;
-error:
-        return 1;
 }
 
 
-static inline int initKernelY(struct matrix *kernelY)
+static inline int initKernelY(kernel_t kernelY)
 {
-        kernelY->data = calloc(3 * 3, sizeof(char));
-        check_mem (kernelY->data);
+        kernelY[0][0] = -1;
+        kernelY[0][1] = -2;
+        kernelY[0][2] = -1;
 
-        kernelY->width  = 3;
-        kernelY->height = 3;
+        kernelY[1][0] = 0;
+        kernelY[1][1] = 0;
+        kernelY[1][2] = 0;
 
-        kernelY->data[0] = -1;
-        kernelY->data[1] = -2;
-        kernelY->data[2] = -1;
-
-        kernelY->data[3] = 0;
-        kernelY->data[4] = 0;
-        kernelY->data[5] = 0;
-
-        kernelY->data[6] = 1;
-        kernelY->data[7] = 2;
-        kernelY->data[8] = 1;
+        kernelY[2][0] = 1;
+        kernelY[2][1] = 2;
+        kernelY[2][2] = 1;
 
         return 0;
-error:
-        return 1;
 }
 
 
 
 
 /* Simple extension from Grey values to R = G = B = grey, and A = 0 */
-int greyScale_to_RGBA(struct matrix *pGSImage, struct matrix *pRGBAImage)
+int greyScale_to_RGBA(struct image *pGSImage, struct image *pRGBAImage)
 {
         check (pGSImage->type == GreyScale,
-                "The image to convert must be GreyScale, %s found", MATRIX_TYPE_STR(pRGBAImage->type));
+                "The image to convert must be GreyScale, %s found", IMAGE_TYPE_STR(pRGBAImage->type));
         check_warn(pRGBAImage->data == NULL, "Will overwrite non-NULL ptr, potential leak");
 {
         uint32_t width  = pGSImage->width;
@@ -155,7 +139,7 @@ int greyScale_to_RGBA(struct matrix *pGSImage, struct matrix *pRGBAImage)
         pRGBAImage->width  = width;
         pRGBAImage->height = height;
         pRGBAImage->type   = GreyScale;
-        pRGBAImage->data = calloc(pGSImage->width * pGSImage->height * 4, sizeof(unsigned char));
+        pRGBAImage->data = calloc(pGSImage->width * pGSImage->height * 4, sizeof(int16_t));
         check_mem(pRGBAImage->data);
         
         for (uint32_t i = 0; i < width * height; i++) {
@@ -178,10 +162,10 @@ error:
 
 
 /* Takes the mean of R, G, B ad grey value. Alpha channel is ignored */
-int RGBA_to_greyScale(struct matrix *pRGBAImage, struct matrix *pGSImage)
+int RGBA_to_greyScale(struct image *pRGBAImage, struct image *pGSImage)
 {
         check (pRGBAImage->type == RGBA, "The image to convert must be RGBA, %s found",
-                                         MATRIX_TYPE_STR(pRGBAImage->type));
+                                         IMAGE_TYPE_STR(pRGBAImage->type));
         check_warn(pGSImage->data == NULL, "Will overwrite non-NULL ptr, potential leak");
 {
         uint32_t R, G, B, greyVal;
@@ -192,7 +176,7 @@ int RGBA_to_greyScale(struct matrix *pRGBAImage, struct matrix *pGSImage)
         pGSImage->width  = width;
         pGSImage->height = height;
         pGSImage->type   = GreyScale;
-        pGSImage->data = calloc(pGSImage->width * pGSImage->height, sizeof(unsigned char));
+        pGSImage->data   = calloc(pGSImage->width * pGSImage->height, sizeof(int16_t));
         check_mem(pGSImage->data);
 
         for (uint32_t i = 0; i < width * height; i++) {
@@ -216,7 +200,7 @@ error:
 
 
 
-#if 0
+#ifndef REMOVE_MAIN
 int main(int argc, const char *argv[])
 {
         int ret;
@@ -228,43 +212,53 @@ int main(int argc, const char *argv[])
 
         const char *inFileName = argv[1];
         const char *outFileName = argv[2];
-        FILE *inFile = NULL;
-        FILE *outFile = NULL;
 
-        inFile = fopen(inFileName, "r");
-        check (inFile != NULL, "Error opening %s: %s\n", inFileName, strerror(errno));
+        //XXX we could just check that we have rights on the files right at the beginning
 
-        outFile = fopen(outFileName, "w");
-        check (outFile != NULL, "Error opening %s: %s\n", outFileName, strerror(errno));
-
-        struct matrix kernelX = MATRIX_INITIALIZER;
-        struct matrix kernelY = MATRIX_INITIALIZER;
-        ret = initKernelX(&kernelX);
+        kernel_t kernelX;
+        kernel_t kernelY;
+        ret = initKernelX(kernelX);
         check (ret == 0, "Failed to create kernelX");
 
-        ret = initKernelY(&kernelY);
+        ret = initKernelY(kernelY);
         check (ret == 0, "Failed to create kernelY");
 
-        struct matrix inImage = MATRIX_INITIALIZER;
-        struct matrix outImage = MATRIX_INITIALIZER;
-        struct matrix matX = MATRIX_INITIALIZER;
-        struct matrix matY = MATRIX_INITIALIZER;
+        struct image inImage = IMAGE_INITIALIZER;
+        struct image greyScaleImage = IMAGE_INITIALIZER;
+        struct image outImage = IMAGE_INITIALIZER;
+        struct matrix gradX = MATRIX_INITIALIZER;
+        struct matrix gradY = MATRIX_INITIALIZER;
 
-        ret = decode_image(inFile, &inImage);
+        ret = decode_image(inFileName, &inImage);
         check (ret == 0, "Image decoding failed");
 
+
+        ret = RGBA_to_greyScale(&inImage, &greyScaleImage);
+        check (ret == 0, "Failed to convert the image in greyscale");
+
+        /*print_mat(&greyScaleImage); //XXX*/
+
         double startTime = omp_get_wtime();
-        ret = convolution(&inImage, &kernelX, &matX);
+        ret = convolution3(&greyScaleImage, kernelX, &gradX);
         check (ret == 0, "Convolution with kernel X failed");
 
-        ret = convolution(&inImage, &kernelY, &matY);
+        /*puts("\ngradX: ");*/
+        /*print_mat(&gradX); //XXX*/
+
+        ret = convolution3(&greyScaleImage, kernelY, &gradY);
         check (ret == 0, "Convolution with kernel Y failed");
 
-        ret = gradient(&matX, &matY, &outImage);
+        /*puts("\nGradY:");*/
+        /*print_mat(&gradY); //XXX*/
+
+        ret = gradient(&gradX, &gradY, &outImage);
         check (ret == 0, "Computation of gradient failed");
         double endTime = omp_get_wtime();
 
-        ret = encode_image(outFile, &outImage);
+        /*puts("\noutImage :");*/
+        /*print_mat(&outImage); //XXX*/
+
+        ret = encode_image(outFileName, &outImage);
         check (ret == 0, "Error while storing image to disk");
 
         printf("Interresting stuff finished in %lf\n", endTime - startTime);
@@ -281,6 +275,7 @@ error:
 
 
 
+#if 0
 int main(int argc, const char *argv[])
 {
         int ret;
@@ -311,3 +306,4 @@ error:
         free_and_null(greyScaleImage.data);
         return -1;
 }
+#endif

@@ -15,7 +15,7 @@
 
 #define clean_errno() (errno == 0 ? "None" : strerror(errno))
 
-#define log_err(...) fprintf(stderr, "[ERROR] (%s%d: errno: %s) ", __FILE__, __LINE__, clean_errno()); \
+#define log_err(...) fprintf(stderr, "[ERROR] (%s:%d: errno: %s) ", __FILE__, __LINE__, clean_errno()); \
                      fprintf(stderr, __VA_ARGS__); \
                      fprintf(stderr, "\n")
 
