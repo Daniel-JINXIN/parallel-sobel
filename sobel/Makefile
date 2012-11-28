@@ -10,18 +10,16 @@ HEADERS = $(wildcard *.h)
 TESTS_C = $(wildcard tests/*.c)
 TESTS = $(patsubst %.c, %, $(TESTS_C))
 
-EXES = omp_version cuda_version seq_version
+EXES = omp_version seq_version
 
-tmp: CFLAGS = -O0 -g -Wall -Wextra -std=c99 -c -fopenmp $(INCLUDES)
-tmp: seq_version
-
-all: $(EXE)
+all: $(EXES)
 
 tests: build_tests
 	@./run_tests.sh
 
 build_tests: $(TESTS)
 
+dev: CFLAGS = -g -O0 -std=c99 -Wall -Wextra -c -fopenmp $(INCLUDES)
 dev: all
 
 LODEPNG_OBJ = ./third_party/lodepng/lodepng.o
