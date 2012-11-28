@@ -130,7 +130,7 @@ int main(int argc, const char *argv[])
                 finalizeLogFile(logFile);
         };
 
-        printf("%lf sec (on %u threads)\n", endTime - startTime, omp_get_num_threads());
+        printf("%lf sec (on %u threads)\n", endTime - startTime, atoi(getenv("OMP_NUM_THREADS")));
 
         return 0;
 
