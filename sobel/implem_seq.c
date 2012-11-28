@@ -186,6 +186,7 @@ static inline int16_t norm2(int16_t x, int16_t y)
 
 
 
+/* Works on GreyScale images */
 static inline void normalize_matrix_to_image(struct matrix *pMat, struct image *pImg)
 {
         int16_t max = ~0; // min value
@@ -203,6 +204,7 @@ static inline void normalize_matrix_to_image(struct matrix *pMat, struct image *
 
 
 
+/* Output a GreyScale image */
 int gradient_norm(struct matrix *pInMatrixX, struct matrix *pInMatrixY, struct image *pOutImage)
 {
         check_null(pInMatrixX);
@@ -242,6 +244,81 @@ error:
 
 
 
+/* Simple extension from Grey values to R = G = B = grey, and A = 0
+ * See header file for full documentation. */
+int greyScale_to_RGBA(struct image *pGSImage, struct image *pRGBAImage)
+{
+        check (pGSImage->type == GreyScale,
+                "The image to convert must be GreyScale, %s found", IMAGE_TYPE_STR(pRGBAImage->type));
+        check_warn(pRGBAImage->data == NULL, "Will overwrite non-NULL ptr, potential leak");
+{
+        uint32_t width  = pGSImage->width;
+        uint32_t height = pGSImage->height;
+        
+        pRGBAImage->width  = width;
+        pRGBAImage->height = height;
+        pRGBAImage->type   = RGBA;
+        pRGBAImage->data = calloc(pGSImage->width * pGSImage->height * 4, sizeof(int16_t));
+        check_mem(pRGBAImage->data);
+        
+        for (uint32_t i = 0; i < width * height; i++) {
+                uint32_t greyVal = pGSImage->data[i];
+                pRGBAImage->data[4*i]     = greyVal;
+                pRGBAImage->data[4*i + 1] = greyVal;
+                pRGBAImage->data[4*i + 2] = greyVal;
+                pRGBAImage->data[4*i + 3] = 255; /* fully opaque */
+        }
+
+        return 0;
+error:
+        reset_matrix(pRGBAImage);
+        return -1;
+}
+}
+
+
+
+
+
+/*
+ * Takes the mean of R, G, B ad grey value. Alpha channel is ignored
+ * See header file for full documentation
+ */
+int RGBA_to_greyScale(struct image *pRGBAImage, struct image *pGSImage)
+{
+        check (pRGBAImage->type == RGBA, "The image to convert must be RGBA, %s found",
+                                         IMAGE_TYPE_STR(pRGBAImage->type));
+        check_warn(pGSImage->data == NULL, "Will overwrite non-NULL ptr, potential leak");
+{
+        uint32_t R, G, B, greyVal;
+
+        uint32_t width = pRGBAImage->width;
+        uint32_t height = pRGBAImage->height;
+        
+        pGSImage->width  = width;
+        pGSImage->height = height;
+        pGSImage->type   = GreyScale;
+        pGSImage->data   = calloc(pGSImage->width * pGSImage->height, sizeof(int16_t));
+        check_mem(pGSImage->data);
+
+        for (uint32_t i = 0; i < width * height; i++) {
+                /* The RGBA image has 4 bytes by pixel */
+                R = pRGBAImage->data[4 * i];
+                G = pRGBAImage->data[4 * i + 1];
+                B = pRGBAImage->data[4 * i + 2];
+                greyVal = (R + G + B) / 3;
+
+                pGSImage->data[i] = (unsigned char)greyVal;
+        }
+
+        return 0;
+error:
+        reset_matrix(pGSImage);
+        return -1;
+}
+}
+
+
 int sobel(struct image *pInImage, struct image *pOutImage)
 {
         check_null(pInImage);
@@ -249,10 +326,15 @@ int sobel(struct image *pInImage, struct image *pOutImage)
         check (pOutImage->data == NULL, "Overwriting non-null ptr, possible leak");
 {
         int ret;
+        struct image greyScaleImageIn  = IMAGE_INITIALIZER;
+        struct image greyScaleImageOut = IMAGE_INITIALIZER;
         struct matrix gradX = MATRIX_INITIALIZER;
         struct matrix gradY = MATRIX_INITIALIZER;
         kernel_t kernelX;
         kernel_t kernelY;
+
+        ret = RGBA_to_greyScale(pInImage, &greyScaleImageIn);
+        check (ret == 0, "Failed to convert to greyscale");
 
         ret = initKernelX(kernelX);
         check (ret == 0, "Failed to init kernel X");
@@ -260,21 +342,28 @@ int sobel(struct image *pInImage, struct image *pOutImage)
         ret = initKernelY(kernelY);
         check (ret == 0, "Failed to init kernel Y");
         
-        ret = convolution3(pInImage, kernelX, &gradX);
+        ret = convolution3(&greyScaleImageIn, kernelX, &gradX);
         check (ret == 0, "Failed to compute X gradient");
 
-        ret = convolution3(pInImage, kernelY, &gradY);
+        ret = convolution3(&greyScaleImageIn, kernelY, &gradY);
         check (ret == 0, "Failed to compute Y gradient");
 
-        ret = gradient_norm(&gradX, &gradY, pOutImage);
+        ret = gradient_norm(&gradX, &gradY, &greyScaleImageOut);
         check (ret == 0, "Failed to compute gradieng norm");
+
+        ret = greyScale_to_RGBA(&greyScaleImageOut, pOutImage);
+        check (ret == 0, "Failed to convert result image to RGBA");
 
         reset_matrix(&gradX);
         reset_matrix(&gradY);
+        reset_matrix(&greyScaleImageIn);
+        reset_matrix(&greyScaleImageOut);
         return 0;
 error:
         reset_matrix(&gradX);
         reset_matrix(&gradY);
+        reset_matrix(&greyScaleImageIn);
+        reset_matrix(&greyScaleImageOut);
         reset_image(pOutImage);
         return -1;
 }

@@ -123,6 +123,9 @@ int decode_image(const char *srcFileName, struct image *pImage);
 int encode_image(const char *destFileName, struct image *pImage);
 
 
+
+
+
 /* Convert back and forth between the PNG RGBA coding and a simple greyscale,
  * so it is a lot more compact in memory */
 /*
@@ -167,8 +170,8 @@ int RGBA_to_greyScale(struct image *pRGBAImage, struct image *pGSImage);
 /* Applies the Sobel edge recognition algorithm to GreyScale pInImage and stores
  * the result in pOutImage.
  *
- * in: pInImage         Pointer to the image to transform, must be in GreyScale
- * out: pOutImage       Pointer to an image struct where the resulting GreyScale
+ * in: pInImage         Pointer to the image to transform, must be RGBA
+ * out: pOutImage       Pointer to an image struct where the resulting RGBA (but witout colors !)
  *                      image will be stored
  * 
  * return: 0 if successful, any other int otherwise
