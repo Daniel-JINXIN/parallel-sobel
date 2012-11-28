@@ -94,14 +94,15 @@ int main(int argc, const char *argv[])
                 logFile = fopen(argv[3], "w");
                 check (logFile != NULL, "Error while opening the logfile %s\n", argv[3]);
                 fprintf(logFile, "[\n");
+
+                /* If there is a log description, use it. Otherwise, use the log filename */
+                if (argc == 5) {
+                        strncpy(logName, argv[4], 255);
+                } else {
+                        strncpy(logName, argv[3], 255);
+                }
         }
 
-        /* If there is a log description, use it. Otherwise, use the log filename */
-        if (argc == 5) {
-                strncpy(logName, argv[4], 255);
-        } else {
-                strncpy(logName, argv[3], 255);
-        }
 
 
         const char *inFileName = argv[1];
@@ -128,6 +129,9 @@ int main(int argc, const char *argv[])
         if (logFile) {
                 finalizeLogFile(logFile);
         };
+
+        printf("%lf sec (on %u threads)\n", endTime - startTime, omp_get_num_threads());
+
         return 0;
 
 error:
