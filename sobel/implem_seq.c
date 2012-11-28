@@ -7,6 +7,48 @@
 
 
 
+/*
+ * Simple initialiszation of the X-direction gradient kernel
+ */
+static inline int initKernelX(kernel_t kernelX)
+{
+        kernelX[0][0] = -1;
+        kernelX[0][1] = 0;
+        kernelX[0][2] = 1;
+
+        kernelX[1][0] = -2;
+        kernelX[1][1] = 0;
+        kernelX[1][2] = 2;
+
+        kernelX[2][0] = -1;
+        kernelX[2][1] = 0;
+        kernelX[2][2] = 1;
+
+        return 0;
+}
+
+
+/*
+ * Simple initialiszation of the X-direction gradient kernel
+ */
+static inline int initKernelY(kernel_t kernelY)
+{
+        kernelY[0][0] = -1;
+        kernelY[0][1] = -2;
+        kernelY[0][2] = -1;
+
+        kernelY[1][0] = 0;
+        kernelY[1][1] = 0;
+        kernelY[1][2] = 0;
+
+        kernelY[2][0] = 1;
+        kernelY[2][1] = 2;
+        kernelY[2][2] = 1;
+
+        return 0;
+}
+
+
 
 /* Compute one value by convoluting a 3x3 kernel over a 3x3 portion of the image
  *
@@ -161,7 +203,7 @@ static inline void normalize_matrix_to_image(struct matrix *pMat, struct image *
 
 
 
-int gradient(struct matrix *pInMatrixX, struct matrix *pInMatrixY, struct image *pOutImage)
+int gradient_norm(struct matrix *pInMatrixX, struct matrix *pInMatrixY, struct image *pOutImage)
 {
         check_null(pInMatrixX);
         check_null(pInMatrixY);
@@ -194,6 +236,46 @@ int gradient(struct matrix *pInMatrixX, struct matrix *pInMatrixY, struct image 
         return 0;
 error:
         reset_matrix(pOutImage);
+        return -1;
+}
+}
+
+
+
+int sobel(struct image *pInImage, struct image *pOutImage)
+{
+        check_null(pInImage);
+        check_null(pOutImage);
+        check (pOutImage->data == NULL, "Overwriting non-null ptr, possible leak");
+{
+        int ret;
+        struct matrix gradX = MATRIX_INITIALIZER;
+        struct matrix gradY = MATRIX_INITIALIZER;
+        kernel_t kernelX;
+        kernel_t kernelY;
+
+        ret = initKernelX(kernelX);
+        check (ret == 0, "Failed to init kernel X");
+
+        ret = initKernelY(kernelY);
+        check (ret == 0, "Failed to init kernel Y");
+        
+        ret = convolution3(pInImage, kernelX, &gradX);
+        check (ret == 0, "Failed to compute X gradient");
+
+        ret = convolution3(pInImage, kernelY, &gradY);
+        check (ret == 0, "Failed to compute Y gradient");
+
+        ret = gradient_norm(&gradX, &gradY, pOutImage);
+        check (ret == 0, "Failed to compute gradieng norm");
+
+        reset_matrix(&gradX);
+        reset_matrix(&gradY);
+        return 0;
+error:
+        reset_matrix(&gradX);
+        reset_matrix(&gradY);
+        reset_image(pOutImage);
         return -1;
 }
 }

@@ -102,50 +102,6 @@ error:
 
 
 
-/*
- * Simple initialiszation of the X-direction gradient kernel
- */
-static inline int initKernelX(kernel_t kernelX)
-{
-        kernelX[0][0] = -1;
-        kernelX[0][1] = 0;
-        kernelX[0][2] = 1;
-
-        kernelX[1][0] = -2;
-        kernelX[1][1] = 0;
-        kernelX[1][2] = 2;
-
-        kernelX[2][0] = -1;
-        kernelX[2][1] = 0;
-        kernelX[2][2] = 1;
-
-        return 0;
-}
-
-
-/*
- * Simple initialiszation of the X-direction gradient kernel
- */
-static inline int initKernelY(kernel_t kernelY)
-{
-        kernelY[0][0] = -1;
-        kernelY[0][1] = -2;
-        kernelY[0][2] = -1;
-
-        kernelY[1][0] = 0;
-        kernelY[1][1] = 0;
-        kernelY[1][2] = 0;
-
-        kernelY[2][0] = 1;
-        kernelY[2][1] = 2;
-        kernelY[2][2] = 1;
-
-        return 0;
-}
-
-
-
-
 /* Simple extension from Grey values to R = G = B = grey, and A = 0
  * See header file for full documentation. */
 int greyScale_to_RGBA(struct image *pGSImage, struct image *pRGBAImage)
@@ -224,8 +180,8 @@ error:
 
 
 
-// This is a hack to allow some testing. XXX could be removed.
-#ifndef REMOVE_MAIN
+// This is a hack to allow testing, see usein tests/ subdir
+#ifndef IN_TEST
 int main(int argc, const char *argv[])
 {
         int ret;
@@ -240,19 +196,9 @@ int main(int argc, const char *argv[])
 
         //XXX we could just check that we have rights on the files right at the beginning
 
-        kernel_t kernelX;
-        kernel_t kernelY;
-        ret = initKernelX(kernelX);
-        check (ret == 0, "Failed to create kernelX");
-
-        ret = initKernelY(kernelY);
-        check (ret == 0, "Failed to create kernelY");
-
         struct image inImage = IMAGE_INITIALIZER;
         struct image greyScaleImage = IMAGE_INITIALIZER;
         struct image outImage = IMAGE_INITIALIZER;
-        struct matrix gradX = MATRIX_INITIALIZER;
-        struct matrix gradY = MATRIX_INITIALIZER;
 
         ret = decode_image(inFileName, &inImage);
         check (ret == 0, "Image decoding failed");
@@ -260,17 +206,10 @@ int main(int argc, const char *argv[])
         ret = RGBA_to_greyScale(&inImage, &greyScaleImage);
         check (ret == 0, "Failed to convert the image in greyscale");
 
-        /**** Interesting stuff starts here ****/
         double startTime = omp_get_wtime();
-        ret = convolution3(&greyScaleImage, kernelX, &gradX);
-        check (ret == 0, "Convolution with kernel X failed");
-
-        ret = convolution3(&greyScaleImage, kernelY, &gradY);
-        check (ret == 0, "Convolution with kernel Y failed");
-
-        ret = gradient(&gradX, &gradY, &outImage);
-        check (ret == 0, "Computation of gradient failed");
+        ret = sobel(&greyScaleImage, &outImage);
         double endTime = omp_get_wtime();
+        check (ret == 0, "Sobel edge detection failed");
 
         ret = encode_image(outFileName, &outImage);
         check (ret == 0, "Error while storing image to disk");

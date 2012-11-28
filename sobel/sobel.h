@@ -72,7 +72,7 @@ do { \
 do { \
         (mat)->width = 0; \
         (mat)->height = 0; \
-        (mat)->type = Unknown \
+        (mat)->type = Unknown; \
         free_and_null((mat)->data); \
 } while (0)
 
@@ -159,36 +159,23 @@ int RGBA_to_greyScale(struct image *pRGBAImage, struct image *pGSImage);
 
 
 /*****************************************************************************
- *      Those functions will be implementation-dependant, and hence
- *      are implemented in implem_*.c. These are the ones to be timed.
+ *      This function will be implementation-dependant, and hence
+ *      is implemented in implem_*.c. This is the one to be timed.
  *****************************************************************************/
 
 
-/*
- * Convolutes a matrix with a 3 by 3 kernel.
- * XXX: va peut-être évoluer, car les convolutions PARTICULIÈRES que l'on
- * utilise sont séparables, et donc encore plus parallèlisables, en particulier
- * intéressant sur GPU.
- * Pourrait donc être séparé en deux fonctions getGradX() et getGradY(), dont
- * l'implémentation pourrait être totalement indépendante.
- */
-int convolution3(struct image *pInImage, kernel_t kernel, struct matrix *pOutMatrix);
-
-
-/*
- * This function combines the gradients in directions X and Y and output the
- * norm of the gradient on every point of the image.
+/* Applies the Sobel edge recognition algorithm to GreyScale pInImage and stores
+ * the result in pOutImage.
  *
- * in: pInMatrixX       Matrix containing the X component of the gradient
- * in: pInMatrixY       Matrix containing the Y component of the gradient
- * out: pOutImage       GreyScale image where each point contains the norm
- *                      of the gradient, normalized on a 0-255 scale.
- *
- * returns: 0 if successful, -1 otherwise.
+ * in: pInImage         Pointer to the image to transform, must be in GreyScale
+ * out: pOutImage       Pointer to an image struct where the resulting GreyScale
+ *                      image will be stored
+ * 
+ * return: 0 if successful, any other int otherwise
  *
  * NOTE: pOutImage must come clean, and will be given back clean in case of failure
  */
-int gradient(struct matrix *pInMatrixX, struct matrix *pInMatrixY, struct image *pOutImage);
+int sobel(struct image *pInImage, struct image *pOutImage);
 
 
 
