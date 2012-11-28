@@ -59,6 +59,21 @@ error:
 
 
 
+/* Remove trailing comma, closes the JSON array, and closes the file */
+void finalizeLogFile(FILE *logFile)
+{
+        /* Rewind from two chars ("\n" and "," */
+        fseek(logFile, -2, SEEK_END);
+
+        /* Finalize the array */
+        fprintf(logFile, "\n]");
+
+        fclose(logFile);
+}
+
+
+
+
 
 
 // This is a hack to allow testing, see usein tests/ subdir
@@ -66,11 +81,28 @@ error:
 int main(int argc, const char *argv[])
 {
         int ret;
+        FILE *logFile = NULL;
+        char logName[256];
 
-        if (argc != 3) {
-                printf("Usage: %s inImage outImage\n", argv[0]);
+        if (argc < 3) {
+                printf("Usage: %s inImage outImage [logFileName]\n", argv[0]);
                 exit(1);
         }
+
+        /* If there is a logfile, use it */
+        if (argc >= 4) {
+                logFile = fopen(argv[3], "w");
+                check (logFile != NULL, "Error while opening the logfile %s\n", argv[3]);
+                fprintf(logFile, "[\n");
+        }
+
+        /* If there is a log description, use it. Otherwise, use the log filename */
+        if (argc == 5) {
+                strncpy(logName, argv[4], 255);
+        } else {
+                strncpy(logName, argv[3], 255);
+        }
+
 
         const char *inFileName = argv[1];
         const char *outFileName = argv[2];
@@ -88,14 +120,20 @@ int main(int argc, const char *argv[])
         double endTime = omp_get_wtime();
         check (ret == 0, "Sobel edge detection failed");
 
+        log_time(logFile, logName, inImage.width * inImage.height, endTime - startTime);
+
         ret = encode_image(outFileName, &outImage);
         check (ret == 0, "Error while storing image to disk");
 
-        printf("Interresting stuff finished in %lf\n", endTime - startTime);
-
+        if (logFile) {
+                finalizeLogFile(logFile);
+        };
         return 0;
 
 error:
+        if (logFile) {
+                fclose(logFile);
+        }
         return 1;
 }
 #endif

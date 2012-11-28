@@ -5,6 +5,8 @@
 #include <stdint.h>
 
 
+
+
 #define free_and_null(ptr) \
 do { \
         if (ptr != NULL) { \
@@ -179,6 +181,13 @@ int RGBA_to_greyScale(struct image *pRGBAImage, struct image *pGSImage);
  * NOTE: pOutImage must come clean, and will be given back clean in case of failure
  */
 int sobel(struct image *pInImage, struct image *pOutImage);
+
+
+/*
+ * This function logs time to a file in JSON format, usable by
+ * the profile.py script.
+ */
+void log_time(FILE *logFile, char *testName, uint32_t size, double t);
 
 
 

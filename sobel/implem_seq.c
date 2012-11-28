@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <math.h>
+#include <stdio.h>
 
 #include "dbg.h"
 
@@ -367,4 +368,16 @@ error:
         reset_image(pOutImage);
         return -1;
 }
+}
+
+
+
+void log_time(FILE *logFile, char *testName, uint32_t size, double t)
+{
+        if (logFile == NULL)
+                return;
+
+        uint32_t nProcs = 1;
+        fprintf(logFile, "{\"name\": \"%s\", \"size\": %u, \"nProcs\": %u, \"time\": %lf},\n",
+                testName, size, nProcs, t);
 }
