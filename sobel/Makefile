@@ -42,3 +42,4 @@ clean:
 	rm -f *.o
 	rm -f third_party/lodepng/*.o
 	rm -f implem_seq_test
+	rm -r out.png
