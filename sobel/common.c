@@ -118,8 +118,8 @@ int main(int argc, const char *argv[])
 
         double startTime = omp_get_wtime();
         ret = sobel(&inImage, &outImage);
-        double endTime = omp_get_wtime();
         check (ret == 0, "Sobel edge detection failed");
+        double endTime = omp_get_wtime();
 
         log_time(logFile, logName, inImage.width * inImage.height, endTime - startTime);
 
@@ -130,7 +130,13 @@ int main(int argc, const char *argv[])
                 finalizeLogFile(logFile);
         };
 
-        printf("%lf sec (on %u threads)\n", endTime - startTime, atoi(getenv("OMP_NUM_THREADS")));
+        char * num_treads_as_str = getenv("OMP_NUM_THREADS");
+        int num_threads;
+        if (num_treads_as_str != NULL)
+                num_threads = atoi(num_treads_as_str);
+        else
+                num_threads = 0;
+        printf("%lf sec (on %u threads)\n", endTime - startTime, num_threads);
 
         return 0;
 

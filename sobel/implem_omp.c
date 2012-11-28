@@ -2,6 +2,7 @@
 #include <math.h>
 #include <omp.h>
 
+
 #include "dbg.h"
 
 #include "sobel.h"
@@ -128,7 +129,7 @@ static inline void convolution_3_by_3(struct image *const pInImage, kernel_t ker
  *    ? ? ? ? ?                                           7 7 8 9 9
  *                                                      
  */
-int convolution3(struct image *pInImage, kernel_t kernel, struct matrix *pOutMatrix)
+int convolution3(struct image *const pInImage, kernel_t kernel, struct matrix *pOutMatrix)
 {
         check_null(pInImage);
         check_null(pOutMatrix);
@@ -144,11 +145,12 @@ int convolution3(struct image *pInImage, kernel_t kernel, struct matrix *pOutMat
 
 
         /* Make the convolution where it's possible */
-#pragma omp parallel for shared(pInImage, pOutMatrix)
+        //XXX should take the real value in correspondance to cache line size
+#pragma omp parallel for shared (pOutMatrix)
         for (uint32_t row = 1; row < pInImage->height - 1; row++) {
                 for (uint32_t col = 1; col < pInImage->width - 1; col++) {
                         convolution_3_by_3(pInImage, kernel, row, col,
-                                           &pOutMatrix->data[row*pOutMatrix->width + col]);
+                                        &pOutMatrix->data[row*pOutMatrix->width + col]);
                 }
         }
 
@@ -156,7 +158,8 @@ int convolution3(struct image *pInImage, kernel_t kernel, struct matrix *pOutMat
          * corners cannot be filled yet, so from 1 to width - 1. */
         //XXX un nowait devrait être possible ici !
         //XXX ou mieux: chacune de ces boucles pourrait aller dans une tâche.
-/*#pragma omp parallel for shared(pOutMatrix)*/
+
+#pragma omp parallel for shared(pOutMatrix)
         for (uint32_t col = 1; col < pOutMatrix->width - 1; col++) {
                 pOutMatrix->data[col] = pOutMatrix->data[pOutMatrix->width + 1];
 
@@ -166,14 +169,13 @@ int convolution3(struct image *pInImage, kernel_t kernel, struct matrix *pOutMat
         }
 
         /* Now first and last columns, including corners. Iterate row by row. */
-/*#pragma omp parallel for shared(pOutMatrix)*/
+#pragma omp parallel for shared(pOutMatrix)
         for (uint32_t startRow = 0; startRow < pOutMatrix->height; startRow += pOutMatrix->width) {
                 pOutMatrix->data[startRow] = pOutMatrix->data[startRow + 1];
 
                 pOutMatrix->data[startRow + pOutMatrix->width - 1] =
                         pOutMatrix->data[startRow + pOutMatrix->width - 2];
         }
-
 
         return 0;
 error:
@@ -193,19 +195,31 @@ static inline int16_t norm2(int16_t x, int16_t y)
 
 
 /* Works on GreyScale images */
-static inline void normalize_matrix_to_image(struct matrix *pMat, struct image *pImg)
+static inline void normalize_matrix_to_image(struct matrix *const pMat, struct image *pImg)
 {
-        int16_t max = ~0; // min value
+        int16_t max = ~0;
+        int16_t loc_max = ~0; // min value
 
-//XXX on pourrait ici aussi, mais attention, soit atomic, soit y ajouter un tableau
+        //XXX Does not seem toq really gain something, could probably be removed
+#pragma omp parallel firstprivate(loc_max) shared(max)
+        {
+#pragma omp for /* Get max on our chunk in our private variable */
         for (uint32_t px = 0; px < pMat->width * pMat->height; px++) {
-                if (pMat->data[px] > max) {
-                        max = pMat->data[px];
+                if (pMat->data[px] > loc_max) {
+                        loc_max = pMat->data[px];
+                }
+        }
+#pragma omp critical /* and update the shared one just once */
+        {
+                if (loc_max > max) {
+                        max = loc_max;
                 }
         }
 
-//XXX attention au cache !
-/*#pragma omp parallel for shared(pMat, pImg)*/
+        } /* end of pragma omp parallel */
+
+
+#pragma omp parallel for shared(pImg)
         for (uint32_t px = 0; px < pMat->width * pMat->height; px++) {
                 pImg->data[px] = (unsigned char) ((pMat->data[px] * 255) / max);
         }
@@ -215,7 +229,7 @@ static inline void normalize_matrix_to_image(struct matrix *pMat, struct image *
 
 
 /* Output a GreyScale image */
-int gradient_norm(struct matrix *pInMatrixX, struct matrix *pInMatrixY, struct image *pOutImage)
+int gradient_norm(struct matrix *const pInMatrixX, struct matrix *const pInMatrixY, struct image *pOutImage)
 {
         check_null(pInMatrixX);
         check_null(pInMatrixY);
@@ -239,7 +253,7 @@ int gradient_norm(struct matrix *pInMatrixX, struct matrix *pInMatrixY, struct i
         unNormalizedGradient.data = calloc(pOutImage->width * pOutImage->height, sizeof(int16_t));
         check_mem(unNormalizedGradient.data);
 
-/*#pragma omp parallel for shared(unNormalizedGradient.data, pInMatrix->data)*/
+#pragma omp parallel for shared(unNormalizedGradient)
         for (uint32_t px = 0; px < pOutImage->width * pOutImage->height; px++) {
                 unNormalizedGradient.data[px] = norm2(pInMatrixX->data[px], pInMatrixY->data[px]);
         }
@@ -257,7 +271,7 @@ error:
 
 /* Simple extension from Grey values to R = G = B = grey, and A = 0
  * See header file for full documentation. */
-int greyScale_to_RGBA(struct image *pGSImage, struct image *pRGBAImage)
+int greyScale_to_RGBA(struct image *const pGSImage, struct image *pRGBAImage)
 {
         check (pGSImage->type == GreyScale,
                 "The image to convert must be GreyScale, %s found", IMAGE_TYPE_STR(pRGBAImage->type));
@@ -272,6 +286,7 @@ int greyScale_to_RGBA(struct image *pGSImage, struct image *pRGBAImage)
         pRGBAImage->data = calloc(pGSImage->width * pGSImage->height * 4, sizeof(int16_t));
         check_mem(pRGBAImage->data);
         
+#pragma omp parallel for shared(pRGBAImage)
         for (uint32_t i = 0; i < width * height; i++) {
                 uint32_t greyVal = pGSImage->data[i];
                 pRGBAImage->data[4*i]     = greyVal;
@@ -295,7 +310,7 @@ error:
  * Takes the mean of R, G, B ad grey value. Alpha channel is ignored
  * See header file for full documentation
  */
-int RGBA_to_greyScale(struct image *pRGBAImage, struct image *pGSImage)
+int RGBA_to_greyScale(struct image *const pRGBAImage, struct image *pGSImage)
 {
         check (pRGBAImage->type == RGBA, "The image to convert must be RGBA, %s found",
                                          IMAGE_TYPE_STR(pRGBAImage->type));
@@ -312,6 +327,7 @@ int RGBA_to_greyScale(struct image *pRGBAImage, struct image *pGSImage)
         pGSImage->data   = calloc(pGSImage->width * pGSImage->height, sizeof(int16_t));
         check_mem(pGSImage->data);
 
+#pragma omp parallel for shared(pGSImage) private(R, G, B, greyVal)
         for (uint32_t i = 0; i < width * height; i++) {
                 /* The RGBA image has 4 bytes by pixel */
                 R = pRGBAImage->data[4 * i];
@@ -330,7 +346,7 @@ error:
 }
 
 
-int sobel(struct image *pInImage, struct image *pOutImage)
+int sobel(struct image *const pInImage, struct image *pOutImage)
 {
         check_null(pInImage);
         check_null(pOutImage);
@@ -344,6 +360,7 @@ int sobel(struct image *pInImage, struct image *pOutImage)
         kernel_t kernelX;
         kernel_t kernelY;
 
+
         ret = RGBA_to_greyScale(pInImage, &greyScaleImageIn);
         check (ret == 0, "Failed to convert to greyscale");
 
@@ -352,12 +369,24 @@ int sobel(struct image *pInImage, struct image *pOutImage)
 
         ret = initKernelY(kernelY);
         check (ret == 0, "Failed to init kernel Y");
-        
-        ret = convolution3(&greyScaleImageIn, kernelX, &gradX);
-        check (ret == 0, "Failed to compute X gradient");
 
+
+        
+        //XXX gestion d'erreurs avec le goto...
+#pragma omp parallel
+        {
+#pragma omp single
+        {
+#pragma omp task private(ret)
+        ret = convolution3(&greyScaleImageIn, kernelX, &gradX);
+        /*check (ret == 0, "Failed to compute X gradient");*/
+
+#pragma omp task private(ret)
         ret = convolution3(&greyScaleImageIn, kernelY, &gradY);
-        check (ret == 0, "Failed to compute Y gradient");
+        /*check (ret == 0, "Failed to compute Y gradient");*/
+#pragma omp taskwait
+        } // single
+        } // parallel
 
         ret = gradient_norm(&gradX, &gradY, &greyScaleImageOut);
         check (ret == 0, "Failed to compute gradieng norm");

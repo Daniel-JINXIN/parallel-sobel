@@ -128,34 +128,6 @@ int encode_image(const char *destFileName, struct image *pImage);
 
 
 
-/* Convert back and forth between the PNG RGBA coding and a simple greyscale,
- * so it is a lot more compact in memory */
-/*
- * Converts a GreyScale image to a RGBA image. Simply makes R = G = B = grey_value,
- * and A = 255 (full opacity).
- *
- * in: pGSImage        The greyscale image to convert
- * out: pRGBAImage     The resulting RGBA image
- *
- * returns: 0 if successful, -1 otherwise
- *
- * NOTE: pRGBAImage must come clean, and will be given back clean in case of failure
- */
-int greyScale_to_RGBA(struct image *pGSImage, struct image *pRGBAImage);
-
-
-/*
- * Converts an RGBA image to a greyscale image by averaging the values of
- * the three colours, and ignoring the alpha channel
- *
- * in: pRGBAImage       The RGBA image to convert
- * out: pGSImage        The resulting greyscale image
- *
- * returns: 0 if successful, -1 otherwise
- *
- * NOTE: pGSImage must come clean, and will be given back clean in case of failure
- */
-int RGBA_to_greyScale(struct image *pRGBAImage, struct image *pGSImage);
 
 
 
@@ -180,7 +152,7 @@ int RGBA_to_greyScale(struct image *pRGBAImage, struct image *pGSImage);
  *
  * NOTE: pOutImage must come clean, and will be given back clean in case of failure
  */
-int sobel(struct image *pInImage, struct image *pOutImage);
+int sobel(struct image *const pInImage, struct image *pOutImage);
 
 
 /*

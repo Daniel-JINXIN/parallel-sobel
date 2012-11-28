@@ -1,0 +1,13 @@
+#/bin/sh
+
+if [ $# -ge 1 ]
+then
+    export OMP_NUM_THREADS=$1
+else
+    export OMP_NUM_THREADS=1
+fi
+
+echo -n "sequential version(1000): "
+./seq_version images/eiffel1000.png /dev/null
+echo -n "parallel version(4000):   "
+./omp_version images/eiffel4000.png /dev/null
