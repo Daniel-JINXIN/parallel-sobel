@@ -1,8 +1,10 @@
 CC=gcc
 LD=gcc
 INCLUDES = -I. -I./third_party/lodepng/
-CFLAGS = -O3 -std=c99 -Wall -Wextra -c -fopenmp $(INCLUDES) -pg -DPROFILE
-LDFLAGS = -lgomp -lm -pg
+#XXX: -std=gnu99 for PAPI only, go back to c99 later !
+CFLAGS = -O3 -std=gnu99 -Wall -Wextra -c -fopenmp $(INCLUDES) -DPROFILE
+#XXX -lpapi for profiling only, too
+LDFLAGS = -lgomp -lm -lpapi
 
 # We won't be fine-grained in dependance to headers and consider
 # that everything depends on every header.
@@ -19,7 +21,7 @@ tests: build_tests
 
 build_tests: $(TESTS)
 
-dev: CFLAGS = -g -O0 -std=c99 -Wall -Wextra -c -fopenmp $(INCLUDES) -pg
+dev: CFLAGS = -g -O0 -std=gnu99 -Wall -Wextra -c -fopenmp $(INCLUDES)
 dev: all
 
 LODEPNG_OBJ = ./third_party/lodepng/lodepng.o

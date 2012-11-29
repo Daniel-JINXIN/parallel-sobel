@@ -1,3 +1,5 @@
+#include <papi.h>
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
@@ -8,6 +10,10 @@
 #include "dbg.h"
 #include "sobel.h"
 #include "lodepng.h"
+
+
+//XXX remove this horror
+int curNbThreads = 0;
 
 
 
@@ -62,6 +68,7 @@ error:
 /* Remove trailing comma, closes the JSON array, and closes the file */
 void finalizeLogFile(FILE *logFile)
 {
+        puts("finalize");
         /* Rewind from two chars ("\n" and "," */
         fseek(logFile, -2, SEEK_END);
 
@@ -84,6 +91,9 @@ int main(int argc, const char *argv[])
         FILE *logFile = NULL;
         char logName[256];
 
+        double startTime;
+        double endTime;
+
         if (argc < 3) {
                 printf("Usage: %s inImage outImage [logFileName]\n", argv[0]);
                 exit(1);
@@ -104,6 +114,9 @@ int main(int argc, const char *argv[])
         }
 
 
+        //XXX for profiling only
+        PAPI_library_init(PAPI_VER_CURRENT);
+
 
         const char *inFileName = argv[1];
         const char *outFileName = argv[2];
@@ -116,21 +129,67 @@ int main(int argc, const char *argv[])
         ret = decode_image(inFileName, &inImage);
         check (ret == 0, "Image decoding failed");
 
-        double startTime = omp_get_wtime();
+
+        //XXX let's factorize the decoding time in tests
+        //i = 1
+        curNbThreads = 1;
+        omp_set_num_threads(curNbThreads);
+        startTime = omp_get_wtime();
         ret = sobel(&inImage, &outImage);
         check (ret == 0, "Sobel edge detection failed");
-        double endTime = omp_get_wtime();
+        reset_image(&outImage);
+        endTime = omp_get_wtime();
+        log_time(logFile, logName, inImage.width * inImage.height, endTime - startTime, 1);
+        log_time(stderr, logName, inImage.width * inImage.height, endTime - startTime, 1);
 
-        char * num_treads_as_str = getenv("OMP_NUM_THREADS");
-        int num_threads;
-        if (num_treads_as_str != NULL)
-                num_threads = atoi(num_treads_as_str);
-        else
-                num_threads = 0;
+
+        //i = 2
+        curNbThreads = 2;
+        omp_set_num_threads(curNbThreads);
+        startTime = omp_get_wtime();
+        ret = sobel(&inImage, &outImage);
+        check (ret == 0, "Sobel edge detection failed");
+        reset_image(&outImage);
+        endTime = omp_get_wtime();
+        log_time(logFile, logName, inImage.width * inImage.height, endTime - startTime, 2);
+        log_time(stderr, logName, inImage.width * inImage.height, endTime - startTime, 2);
+
+        //i = 4
+        curNbThreads = 4;
+        omp_set_num_threads(curNbThreads);
+        startTime = omp_get_wtime();
+        ret = sobel(&inImage, &outImage);
+        check (ret == 0, "Sobel edge detection failed");
+        reset_image(&outImage);
+        endTime = omp_get_wtime();
+        log_time(logFile, logName, inImage.width * inImage.height, endTime - startTime, 4);
+        log_time(stderr, logName, inImage.width * inImage.height, endTime - startTime, 4);
+
+
+        for (int i = 6; i <= 48; i += 6) {
+                curNbThreads = i;
+                omp_set_num_threads(curNbThreads);
+                reset_image(&outImage);
+                startTime = omp_get_wtime();
+                ret = sobel(&inImage, &outImage);
+                check (ret == 0, "Sobel edge detection failed");
+                endTime = omp_get_wtime();
+                log_time(logFile, logName, inImage.width * inImage.height, endTime - startTime, i);
+                log_time(stderr, logName, inImage.width * inImage.height, endTime - startTime, i);
+        }
+
+
+
+        /*char * num_treads_as_str = getenv("OMP_NUM_THREADS");*/
+        /*int num_threads;*/
+        /*if (num_treads_as_str != NULL)*/
+                /*num_threads = atoi(num_treads_as_str);*/
+        /*else*/
+                /*num_threads = 0;*/
 
         /*printf("%lf sec (on %u threads)\n", endTime - startTime, num_threads);*/
 
-        log_time(logFile, logName, inImage.width * inImage.height, endTime - startTime, num_threads);
+        /*log_time(logFile, logName, inImage.width * inImage.height, endTime - startTime, num_threads);*/
 
         ret = encode_image(outFileName, &outImage);
         check (ret == 0, "Error while storing image to disk");
@@ -141,6 +200,8 @@ int main(int argc, const char *argv[])
                 finalizeLogFile(logFile);
         };
 
+
+        PAPI_shutdown();
 
         return 0;
 

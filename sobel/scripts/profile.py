@@ -60,6 +60,7 @@ for i, name in enumerate(test_names):
 for t in tests:
     # Get all different X values
     Xvalues = list(set([e[t.keyX] for e in t.measures]))
+    Xvalues.sort()
 
     mean_values = []
     for v in Xvalues:
@@ -69,13 +70,12 @@ for t in tests:
 
     t.measures = mean_values
 
-    
 
 # Now we can plot every test
 for t in tests:
-    t.measures.sort(key = lambda e: e[t.keyX])
+    #t.measures.sort(key = lambda e: e[t.keyX])
     n_items_or_procs = [ e[t.keyX] for e in t.measures ]
-    times_or_throughputs = [ e[keyY] for e in t.measures ]
+    times_or_throughputs = [ e[t.keyY] for e in t.measures ]
 
     plt.plot(n_items_or_procs, times_or_throughputs,
              color = t.color, linestyle='-', marker='o',

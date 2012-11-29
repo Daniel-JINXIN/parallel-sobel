@@ -159,7 +159,7 @@ int sobel(struct image *const pInImage, struct image *pOutImage);
  * This function logs time to a file in JSON format, usable by
  * the profile.py script.
  */
-void log_time(FILE *logFile, char *testName, uint32_t size, double t);
+void log_time(FILE *logFile, char *testName, uint32_t size, double t, int numThreads);
 
 
 
