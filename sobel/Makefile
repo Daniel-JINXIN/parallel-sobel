@@ -1,8 +1,8 @@
 CC=gcc
 LD=gcc
 INCLUDES = -I. -I./third_party/lodepng/
-CFLAGS = -O3 -std=c99 -Wall -Wextra -c -fopenmp $(INCLUDES)
-LDFLAGS = -lgomp -lm
+CFLAGS = -O3 -std=c99 -Wall -Wextra -c -fopenmp $(INCLUDES) -pg -DPROFILE
+LDFLAGS = -lgomp -lm -pg
 
 # We won't be fine-grained in dependance to headers and consider
 # that everything depends on every header.
@@ -19,7 +19,7 @@ tests: build_tests
 
 build_tests: $(TESTS)
 
-dev: CFLAGS = -g -O0 -std=c99 -Wall -Wextra -c -fopenmp $(INCLUDES)
+dev: CFLAGS = -g -O0 -std=c99 -Wall -Wextra -c -fopenmp $(INCLUDES) -pg
 dev: all
 
 LODEPNG_OBJ = ./third_party/lodepng/lodepng.o
@@ -51,13 +51,15 @@ common.o: $(LODEPNG_OBJ)
 clean:
 	rm -f $(EXES)
 	rm -f *.o
-	rm -f third_party/lodepng/*.o
 	rm -f implem_seq_test
 	rm -f out.png
 	rm -f tests/*.o
 	rm -f $(TESTS)
 
+cleanall: clean
+	rm -f third_party/lodepng/*.o
+
 tags:
 	ctags -R
 
-.PHONY: clean tags tests
+.PHONY: clean tags tests cleanall

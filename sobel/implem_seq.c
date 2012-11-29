@@ -372,12 +372,11 @@ error:
 
 
 
-void log_time(FILE *logFile, char *testName, uint32_t size, double t)
+void log_time(FILE *logFile, char *testName, uint32_t size, double t, int numThreads)
 {
         if (logFile == NULL)
                 return;
 
-        uint32_t nProcs = 1;
-        fprintf(logFile, "{\"name\": \"%s\", \"size\": %u, \"nProcs\": %u, \"time\": %lf},\n",
-                testName, size, nProcs, t);
+        fprintf(logFile, "{\"name\": \"%s\", \"size\": %u, \"nProcs\": %u, \"time\": %lf, \"throughput\": %lf},\n",
+                testName, size, numThreads, t, (double)size/t);
 }

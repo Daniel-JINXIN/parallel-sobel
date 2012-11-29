@@ -121,22 +121,26 @@ int main(int argc, const char *argv[])
         check (ret == 0, "Sobel edge detection failed");
         double endTime = omp_get_wtime();
 
-        log_time(logFile, logName, inImage.width * inImage.height, endTime - startTime);
-
-        ret = encode_image(outFileName, &outImage);
-        check (ret == 0, "Error while storing image to disk");
-
-        if (logFile) {
-                finalizeLogFile(logFile);
-        };
-
         char * num_treads_as_str = getenv("OMP_NUM_THREADS");
         int num_threads;
         if (num_treads_as_str != NULL)
                 num_threads = atoi(num_treads_as_str);
         else
                 num_threads = 0;
-        printf("%lf sec (on %u threads)\n", endTime - startTime, num_threads);
+
+        /*printf("%lf sec (on %u threads)\n", endTime - startTime, num_threads);*/
+
+        log_time(logFile, logName, inImage.width * inImage.height, endTime - startTime, num_threads);
+
+        ret = encode_image(outFileName, &outImage);
+        check (ret == 0, "Error while storing image to disk");
+
+        
+
+        if (logFile) {
+                finalizeLogFile(logFile);
+        };
+
 
         return 0;
 
