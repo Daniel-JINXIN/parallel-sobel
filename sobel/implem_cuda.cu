@@ -88,31 +88,12 @@ __global__ void sobel_unnorm_kernel(unsigned char *pInImageData, uint32_t *pOutI
         int32_t gradX = convolution_by_3(pInImageData, kernelX, baseIndex, width, height);
         int32_t gradY = convolution_by_3(pInImageData, kernelY, baseIndex, width, height);
 
-        /*acc += kernel[0][0] * pInImage->data[(row + 1)*w + col + 1];*/
-        /*acc += kernel[0][1] * pInImage->data[(row + 1)*w + col];*/
-        /*acc += kernel[0][2] * pInImage->data[(row + 1)*w + col - 1];*/
-
-        /*acc += kernel[1][0] * pInImage->data[row*w + col + 1];*/
-        /*acc += kernel[1][1] * pInImage->data[row*w + col];*/
-        /*acc += kernel[1][2] * pInImage->data[row*w + col - 1];*/
-
-        /*acc += kernel[2][0] * pInImage->data[(row - 1)*w + col + 1];*/
-        /*acc += kernel[2][1] * pInImage->data[(row - 1)*w + col];*/
-        /*acc += kernel[2][2] * pInImage->data[(row - 1)*w + col - 1];*/
-
         double gradX_asFloat = static_cast<float>(gradX);
         double gradY_asFloat = static_cast<float>(gradY);
         uint32_t gradNorm = static_cast<uint32_t>(
                                 sqrt(gradX_asFloat*gradX_asFloat + gradY_asFloat*gradY_asFloat));
 
         pOutImageData[pxNum] = gradNorm;
-
-
-
-        /*pOutImageData[baseIndex] = greyVal;*/
-        /*pOutImageData[baseIndex + 1] = greyVal;*/
-        /*pOutImageData[baseIndex + 2] = greyVal;*/
-        /*pOutImageData[baseIndex + 3] = 255; [> Full opacity <]*/
 }
 
 
@@ -185,9 +166,6 @@ int sobel(struct image *const pInImage, struct image *pOutImage)
         uint32_t max = 0;
         uint32_t maxPos = 0;
         for (uint32_t i = 0; i < width*height; i++) {
-                if (i < 50) {
-                        printf("%u\n", pUnNormalizedOut[i]);
-                }
                 if (pUnNormalizedOut[i] > max) {
                         max = pUnNormalizedOut[i];
                         maxPos = i;
@@ -204,12 +182,6 @@ int sobel(struct image *const pInImage, struct image *pOutImage)
         }
 
 
-
-        /* display some */
-        for (int i = 0; i < 20; i++) {
-                printf("%d ", pOutImage->data[i]);
-        }
-        puts("");
 
         cudaFree(inImageDevice);
         cudaFree(outImageDevice);
