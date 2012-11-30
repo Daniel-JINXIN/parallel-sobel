@@ -1,10 +1,11 @@
 CC=gcc
 LD=gcc
+NVCC=nvcc
+NVCCFLAGS = -c
 INCLUDES = -I. -I./third_party/lodepng/
 #XXX: -std=gnu99 for PAPI only, go back to c99 later !
 CFLAGS = -O3 -std=gnu99 -Wall -Wextra -c -fopenmp $(INCLUDES) -DPROFILE
-#XXX -lpapi for profiling only, too
-LDFLAGS = -lgomp -lm -lpapi
+LDFLAGS = -lgomp -lm -lcudart
 
 # We won't be fine-grained in dependance to headers and consider
 # that everything depends on every header.
@@ -12,7 +13,7 @@ HEADERS = $(wildcard *.h)
 TESTS_C = $(wildcard tests/*.c)
 TESTS = $(patsubst %.c, %, $(TESTS_C))
 
-EXES = omp_version seq_version
+EXES = omp_version seq_version cuda_version
 
 all: $(EXES)
 
@@ -46,6 +47,7 @@ tests/%_test: tests/%_test.o $(LODEPNG_OBJ) $(HEADERS) %.c common.c tests/%_test
 common.o: $(LODEPNG_OBJ)
 
 %.o: %.cu
+	$(NVCC) $(NVCCFLAGS) $< -o $@
 
 %.o: %.c
 	$(CC) $(CFLAGS) $< -o $@

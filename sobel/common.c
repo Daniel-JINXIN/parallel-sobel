@@ -1,5 +1,3 @@
-#include <papi.h>
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
@@ -109,10 +107,6 @@ int main(int argc, const char *argv[])
         }
 
 
-        //XXX for profiling only
-        PAPI_library_init(PAPI_VER_CURRENT);
-
-
         const char *inFileName = argv[1];
         const char *outFileName = argv[2];
 
@@ -145,8 +139,6 @@ int main(int argc, const char *argv[])
                 finalizeLogFile(logFile);
         };
 
-
-        PAPI_shutdown();
 
         return 0;
 
