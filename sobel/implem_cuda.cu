@@ -17,30 +17,102 @@ __constant__ kernel_t kernelY = { {-1, -2, -1},
                                   { 1,  2,  1} };
 
 
-
-__global__ void sobel_kernel(unsigned char *pInImageData, unsigned char *pOutImageData,
-                             uint32_t width, uint32_t height)
+__device__ inline unsigned char greyscale_value(unsigned char *pImage, uint32_t baseIndex)
 {
+        /* Get the GreyScale value of our pixel */
+        unsigned char R, G, B, greyVal;
+        R = pImage[baseIndex];
+        G = pImage[baseIndex + 1];
+        B = pImage[baseIndex + 2];
+
+        greyVal = (R + G + B) / 3;
+
+        return greyVal;
+}
+
+
+
+
+//XXX We do redundant computation between threads, can be improved with shared memory
+__device__ inline int32_t convolution_by_3(unsigned char *pImage, kernel_t kernel,
+                                           uint32_t baseIndex, uint32_t width, uint32_t height)
+{
+        int32_t grad = 0;
+        /* Line below */
+        grad += kernelX[0][0] * greyscale_value(pImage, baseIndex + 4 * width + 4);
+        grad += kernelX[0][1] * greyscale_value(pImage, baseIndex + 4 * width);
+        grad += kernelX[0][2] * greyscale_value(pImage, baseIndex + 4 * width - 4);
+
+        /* current line */
+        grad += kernelX[1][0] * greyscale_value(pImage, baseIndex + 4);
+        grad += kernelX[1][1] * greyscale_value(pImage, baseIndex);
+        grad += kernelX[1][2] * greyscale_value(pImage, baseIndex - 4);
+
+        /* line above */
+        grad += kernelX[2][0] * greyscale_value(pImage, baseIndex - 4 * width + 4);
+        grad += kernelX[2][1] * greyscale_value(pImage, baseIndex - 4 * width);
+        grad += kernelX[2][2] * greyscale_value(pImage, baseIndex - 4 * width - 4);
+
+        return grad;
+}
+
+
+
+__global__ void sobel_unnorm_kernel(unsigned char *pInImageData, uint32_t *pOutImageData,
+                                    uint32_t width, uint32_t height)
+{
+
         uint32_t x = blockIdx.x * blockDim.x + threadIdx.x;
         uint32_t y = blockIdx.y * blockDim.y + threadIdx.y;
-        uint32_t baseIndex = y * width * 4 + x * 4; /* 4 char by pixel */
+        uint32_t pxNum = y * width + x;
+        uint32_t baseIndex = 4 * pxNum; /* 4 char by pixel */
+
+
+        //XXX: don't count the borders for the moment
+        if (x == 0 || x == width || y == 0 || y == height) {
+                pOutImageData[pxNum] = 0;
+                return;
+        }
 
         /* e careful with borders */
         if (baseIndex > width * height * 4) {
                 return;
         }
 
-        unsigned char R, G, B, greyVal;
-        R = pInImageData[baseIndex];
-        G = pInImageData[baseIndex + 1];
-        B = pInImageData[baseIndex + 2];
+        /* the surrounding pixels, where x == me.
+                . . .
+                . x .
+                . . .
+         */
 
-        greyVal = (R + G + B) / 3;
+        int32_t gradX = convolution_by_3(pInImageData, kernelX, baseIndex, width, height);
+        int32_t gradY = convolution_by_3(pInImageData, kernelY, baseIndex, width, height);
 
-        pOutImageData[baseIndex] = greyVal;
-        pOutImageData[baseIndex + 1] = greyVal;
-        pOutImageData[baseIndex + 2] = greyVal;
-        pOutImageData[baseIndex + 3] = 255; /* Full opacity */
+        /*acc += kernel[0][0] * pInImage->data[(row + 1)*w + col + 1];*/
+        /*acc += kernel[0][1] * pInImage->data[(row + 1)*w + col];*/
+        /*acc += kernel[0][2] * pInImage->data[(row + 1)*w + col - 1];*/
+
+        /*acc += kernel[1][0] * pInImage->data[row*w + col + 1];*/
+        /*acc += kernel[1][1] * pInImage->data[row*w + col];*/
+        /*acc += kernel[1][2] * pInImage->data[row*w + col - 1];*/
+
+        /*acc += kernel[2][0] * pInImage->data[(row - 1)*w + col + 1];*/
+        /*acc += kernel[2][1] * pInImage->data[(row - 1)*w + col];*/
+        /*acc += kernel[2][2] * pInImage->data[(row - 1)*w + col - 1];*/
+
+        double gradX_asFloat = static_cast<float>(gradX);
+        double gradY_asFloat = static_cast<float>(gradY);
+        uint32_t gradNorm = static_cast<uint32_t>(
+                                sqrt(gradX_asFloat*gradX_asFloat + gradY_asFloat*gradY_asFloat));
+
+        pOutImageData[pxNum] = gradNorm;
+
+
+
+        /*pOutImageData[baseIndex] = greyVal;*/
+        /*pOutImageData[baseIndex + 1] = greyVal;*/
+        /*pOutImageData[baseIndex + 2] = greyVal;*/
+        /*pOutImageData[baseIndex + 3] = 255; [> Full opacity <]*/
 }
 
 
@@ -74,13 +146,14 @@ int sobel(struct image *const pInImage, struct image *pOutImage)
         //XXX to do one thread per pixel.
 
         unsigned char *inImageDevice;
-        unsigned char *outImageDevice;
+        /*unsigned char *outImageDevice;*/
+        uint32_t *outImageDevice;
 
         /* Allocate memory on the device for both images (in and out) */
         ret = cudaMalloc((void **)&inImageDevice, width * height * 4 * sizeof(unsigned char));
         check_warn (ret == cudaSuccess, "Failed to allocate memory for in image on the device");
 
-        ret = cudaMalloc((void **)&outImageDevice, width * height * 4 * sizeof(unsigned char));
+        ret = cudaMalloc((void **)&outImageDevice, width * height * 4 * sizeof(uint32_t));
         check_warn (ret == cudaSuccess, "Failed to allocate memory for out image on the device");
 
         /* Copy The input image on the device */
@@ -89,19 +162,48 @@ int sobel(struct image *const pInImage, struct image *pOutImage)
         check_warn (ret == cudaSuccess, "Failed to copy the image to the device");
 
 
+        /* Unnormalized version */
+        uint32_t *pUnNormalizedOut = NULL;
+        pUnNormalizedOut = (uint32_t *)calloc(width*height, sizeof(uint32_t));
+
         /* Allocate memory for the resulting image */
         pOutImage->width = pInImage->width;
         pOutImage->height = pInImage->height;
         pOutImage->type = RGBA;
         pOutImage->data = (unsigned char*)calloc(pOutImage->width * pOutImage->height * 4, sizeof(unsigned char));
-        check_mem(pOutImage->data);
+        /*check_mem(pOutImage->data);*/
 
         /* And launch the kernel */
-        sobel_kernel <<< nBlocks, threadsPerBlock >>> (inImageDevice, outImageDevice, width, height);
+        sobel_unnorm_kernel <<< nBlocks, threadsPerBlock >>> (inImageDevice, outImageDevice, width, height);
 
-        ret = cudaMemcpy(pOutImage->data, outImageDevice, width * height * 4 * sizeof(unsigned char),
-                         cudaMemcpyDeviceToHost);
+        ret = cudaMemcpy(pUnNormalizedOut, outImageDevice,
+                         width * height * sizeof(uint32_t), cudaMemcpyDeviceToHost);
         check_warn (ret == cudaSuccess, "Kernel failed: %s", cudaGetErrorString(ret));
+
+
+        /* Normalize, on CPU for the moment */
+        uint32_t max = 0;
+        uint32_t maxPos = 0;
+        for (uint32_t i = 0; i < width*height; i++) {
+                if (i < 50) {
+                        printf("%u\n", pUnNormalizedOut[i]);
+                }
+                if (pUnNormalizedOut[i] > max) {
+                        max = pUnNormalizedOut[i];
+                        maxPos = i;
+                }
+        }
+        printf("Max: %u, at %u\n", max, maxPos);
+
+        for (uint32_t i = 0; i < width*height; i++) {
+                unsigned char greyVal = (255 * pUnNormalizedOut[i]) / max;
+                pOutImage->data[4*i] = greyVal;
+                pOutImage->data[4*i + 1] = greyVal;
+                pOutImage->data[4*i + 2] = greyVal;
+                pOutImage->data[4*i + 3] = 255; /* full opacity */
+        }
+
+
 
         /* display some */
         for (int i = 0; i < 20; i++) {
@@ -109,12 +211,16 @@ int sobel(struct image *const pInImage, struct image *pOutImage)
         }
         puts("");
 
-        return 0;
-error:
         cudaFree(inImageDevice);
         cudaFree(outImageDevice);
-        free_and_null(pOutImage->data);
-        return -1;
+        return 0;
+        //XXX need a cleanup for image in case of failure.
+
+/*error:*/
+        /*cudaFree(inImageDevice);*/
+        /*cudaFree(outImageDevice);*/
+        /*free_and_null(pOutImage->data);*/
+        /*return -1;*/
 }
 
 
