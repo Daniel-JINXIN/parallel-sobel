@@ -12,10 +12,6 @@
 #include "lodepng.h"
 
 
-//XXX remove this horror
-int curNbThreads = 0;
-
-
 
 /* We make use of the awesome lodepng library, see in third_party/ */
 int decode_image(const char *srcFileName, struct image *pImage)
@@ -68,7 +64,6 @@ error:
 /* Remove trailing comma, closes the JSON array, and closes the file */
 void finalizeLogFile(FILE *logFile)
 {
-        puts("finalize");
         /* Rewind from two chars ("\n" and "," */
         fseek(logFile, -2, SEEK_END);
 
@@ -129,67 +124,17 @@ int main(int argc, const char *argv[])
         ret = decode_image(inFileName, &inImage);
         check (ret == 0, "Image decoding failed");
 
+        int num_threads = get_env_num_threads();
 
-        //XXX let's factorize the decoding time in tests
-        //i = 1
-        curNbThreads = 1;
-        omp_set_num_threads(curNbThreads);
         startTime = omp_get_wtime();
         ret = sobel(&inImage, &outImage);
-        check (ret == 0, "Sobel edge detection failed");
-        reset_image(&outImage);
         endTime = omp_get_wtime();
-        log_time(logFile, logName, inImage.width * inImage.height, endTime - startTime, 1);
-        log_time(stderr, logName, inImage.width * inImage.height, endTime - startTime, 1);
-
-
-        //i = 2
-        curNbThreads = 2;
-        omp_set_num_threads(curNbThreads);
-        startTime = omp_get_wtime();
-        ret = sobel(&inImage, &outImage);
         check (ret == 0, "Sobel edge detection failed");
-        reset_image(&outImage);
-        endTime = omp_get_wtime();
-        log_time(logFile, logName, inImage.width * inImage.height, endTime - startTime, 2);
-        log_time(stderr, logName, inImage.width * inImage.height, endTime - startTime, 2);
-
-        //i = 4
-        curNbThreads = 4;
-        omp_set_num_threads(curNbThreads);
-        startTime = omp_get_wtime();
-        ret = sobel(&inImage, &outImage);
-        check (ret == 0, "Sobel edge detection failed");
-        reset_image(&outImage);
-        endTime = omp_get_wtime();
-        log_time(logFile, logName, inImage.width * inImage.height, endTime - startTime, 4);
-        log_time(stderr, logName, inImage.width * inImage.height, endTime - startTime, 4);
+        log_time(logFile, logName, inImage.width * inImage.height, endTime - startTime, num_threads);
 
 
-        for (int i = 6; i <= 48; i += 6) {
-                curNbThreads = i;
-                omp_set_num_threads(curNbThreads);
-                reset_image(&outImage);
-                startTime = omp_get_wtime();
-                ret = sobel(&inImage, &outImage);
-                check (ret == 0, "Sobel edge detection failed");
-                endTime = omp_get_wtime();
-                log_time(logFile, logName, inImage.width * inImage.height, endTime - startTime, i);
-                log_time(stderr, logName, inImage.width * inImage.height, endTime - startTime, i);
-        }
-
-
-
-        /*char * num_treads_as_str = getenv("OMP_NUM_THREADS");*/
-        /*int num_threads;*/
-        /*if (num_treads_as_str != NULL)*/
-                /*num_threads = atoi(num_treads_as_str);*/
-        /*else*/
-                /*num_threads = 0;*/
-
-        /*printf("%lf sec (on %u threads)\n", endTime - startTime, num_threads);*/
-
-        /*log_time(logFile, logName, inImage.width * inImage.height, endTime - startTime, num_threads);*/
+        //XXX
+        printf("With %d threads, completed in %lf sec\n", num_threads,  endTime - startTime);
 
         ret = encode_image(outFileName, &outImage);
         check (ret == 0, "Error while storing image to disk");

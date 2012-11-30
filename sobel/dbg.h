@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <stdlib.h>
 
 #ifdef NDEBUG
 #define debug(...)
@@ -55,6 +56,19 @@
 
 #endif // define PROFILE
 
+
+static inline int get_env_num_threads()
+{
+        char * num_threads_as_str = getenv("OMP_NUM_THREADS");
+        long num_threads;
+        if (num_threads_as_str != NULL) {
+                num_threads = atoi(num_threads_as_str);
+        } else {
+                num_threads = 0;
+        }
+
+        return num_threads;
+}
 
 
 #endif /* Inclusion guard */

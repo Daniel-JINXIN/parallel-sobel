@@ -9,13 +9,6 @@
 
 #include "sobel.h"
 
-#define MIN_CHUNK 3000
-// raffine this parallel threshold
-#define PARALLEL_THRESHOLD 7500
-
-
-//XXX remove
-extern int curNbThreads;
 
 
 /*
@@ -153,7 +146,6 @@ int convolution3(struct image *const pInImage, kernel_t kernel, struct matrix *p
 
 
         /* Make the convolution where it's possible */
-        //TODO: try to raffine the min chunk size.
 #pragma omp parallel for shared (pOutMatrix)
         for (uint32_t row = 1; row < pInImage->height - 1; row++) {
                 for (uint32_t col = 1; col < pInImage->width - 1; col++) {
@@ -164,8 +156,7 @@ int convolution3(struct image *const pInImage, kernel_t kernel, struct matrix *p
 
         /* Fill the missing rows with what we arbitrarily decided. Be careful,
          * corners cannot be filled yet, so from 1 to width - 1. */
-/*#pragma omp parallel for shared(pOutMatrix) schedule(static, MIN_CHUNK)*/
-#pragma omp parallel for shared(pOutMatrix)// if (pOutMatrix->width - 1 > PARALLEL_THRESHOLD) schedule(static, MIN_CHUNK)
+#pragma omp parallel for shared(pOutMatrix)
         for (uint32_t col = 1; col < pOutMatrix->width - 1; col++) {
                 pOutMatrix->data[col] = pOutMatrix->data[pOutMatrix->width + 1];
 
@@ -175,8 +166,7 @@ int convolution3(struct image *const pInImage, kernel_t kernel, struct matrix *p
         }
 
         /* Now first and last columns, including corners. Iterate row by row. */
-/*#pragma omp parallel for shared(pOutMatrix) schedule(static, MIN_CHUNK)*/
-#pragma omp parallel for shared(pOutMatrix) //if (pOutMatrix->height > PARALLEL_THRESHOLD) schedule(static, MIN_CHUNK)
+#pragma omp parallel for shared(pOutMatrix)
         for (uint32_t startRow = 0; startRow < pOutMatrix->height; startRow += pOutMatrix->width) {
                 pOutMatrix->data[startRow] = pOutMatrix->data[startRow + 1];
 
@@ -207,49 +197,34 @@ static inline void normalize_matrix_to_image(struct matrix *const pMat, struct i
         int16_t max = ~0;
         int16_t loc_max = ~0; // min value
 
-        //XXX XXX NETTOYER CETTE MERDE !
-        //XXX Does not seem to really gain something, could probably be removed
-#pragma omp parallel firstprivate(loc_max) shared(max) //if (pMat->width * pMat->height > PARALLEL_THRESHOLD)
+
+#pragma omp parallel firstprivate(loc_max) shared(max)
         {
-                //XXX ajouter du padding pour le cache
-        struct padded_int16 {
-                int16_t val;
-                char padding[64-16];
-        };
-        struct padded_int16 loc_maxes[omp_get_num_threads()];
-#pragma omp for //schedule(static, MIN_CHUNK) /* Get max on our chunk in our private variable */
+#pragma omp for /* Get the max on our chunk */
         for (uint32_t px = 0; px < pMat->width * pMat->height; px++) {
                 if (pMat->data[px] > loc_max) {
                         loc_max = pMat->data[px];
                 }
+        }
 
-                loc_maxes[omp_get_thread_num()].val = loc_max;
-        }
-#pragma omp single
+#pragma omp critical /* And get the max of all loc_maxes */
         {
-        for (int i = 0; i < omp_get_num_threads(); i++) {
-                if (loc_maxes[i].val > max) {
-                        max = loc_maxes[i].val;
+                for (int i = 0; i < omp_get_num_threads(); i++) {
+                        if (loc_max > max) {
+                                max = loc_max;
+                        }
                 }
-        }
-        } /* end of single */
+        } /* end of critical */
         } /* end of parallel */
 
-/*#pragma omp critical [> and update the shared one just once <]*/
-        /*{*/
-                /*if (loc_max > max) {*/
-                        /*max = loc_max;*/
-                /*}*/
-        /*}*/
-
-        /*} [> end of pragma omp parallel <]*/
 
 
-
-#pragma omp parallel for shared(pImg)// if (pMat->width * pMat->height > PARALLEL_THRESHOLD) schedule(static, MIN_CHUNK)
+#pragma omp parallel for shared(pImg)
         for (uint32_t px = 0; px < pMat->width * pMat->height; px++) {
                 pImg->data[px] = (unsigned char) ((pMat->data[px] * 255) / max);
         }
+
+
 }
 
 
@@ -280,8 +255,8 @@ int gradient_norm(struct matrix *const pInMatrixX, struct matrix *const pInMatri
         unNormalizedGradient.data = calloc(pOutImage->width * pOutImage->height, sizeof(int16_t));
         check_mem(unNormalizedGradient.data);
 
-/*#pragma omp parallel for shared(unNormalizedGradient) schedule(static, MIN_CHUNK)*/
-#pragma omp parallel for shared(unNormalizedGradient) //if (pOutImage->width * pOutImage->height > PARALLEL_THRESHOLD) schedule(static, MIN_CHUNK)
+
+#pragma omp parallel for shared(unNormalizedGradient)
         for (uint32_t px = 0; px < pOutImage->width * pOutImage->height; px++) {
                 unNormalizedGradient.data[px] = norm2(pInMatrixX->data[px], pInMatrixY->data[px]);
         }
@@ -375,7 +350,6 @@ error:
 
 int sobel(struct image *const pInImage, struct image *pOutImage)
 {
-        //XXX for profiling only
 #ifdef PROFILE
         double startRGB_to_GS, endRGB_to_GS;
         double startConvs, endConvs;
@@ -395,57 +369,45 @@ int sobel(struct image *const pInImage, struct image *pOutImage)
         kernel_t kernelX;
         kernel_t kernelY;
 
-        /*log_info("before RGBA_to_greyScale");*/
         
         tu_get_time(startRGB_to_GS );
         ret = RGBA_to_greyScale(pInImage, &greyScaleImageIn);
         tu_get_time(endRGB_to_GS );
         check (ret == 0, "Failed to convert to greyscale");
 
+
         ret = initKernelX(kernelX);
         check (ret == 0, "Failed to init kernel X");
 
         ret = initKernelY(kernelY);
         check (ret == 0, "Failed to init kernel Y");
-
-
         
         tu_get_time(startConvs );
 
-        /*log_info("before first convolution");*/
         ret = convolution3(&greyScaleImageIn, kernelX, &gradX);
         check (ret == 0, "Failed to compute X gradient");
 
-        /*log_info("before second convolution");*/
         ret = convolution3(&greyScaleImageIn, kernelY, &gradY);
         check (ret == 0, "Failed to compute Y gradient");
 
         tu_get_time(endConvs );
 
         tu_get_time(startGradNorm );
-        /*log_info("before gradient norm");*/
         ret = gradient_norm(&gradX, &gradY, &greyScaleImageOut);
         tu_get_time(endGradNorm );
         check (ret == 0, "Failed to compute gradieng norm");
 
+
         tu_get_time(startGS_to_RGB );
-        /*log_info("before greyscale to RGBA");*/
         ret = greyScale_to_RGBA(&greyScaleImageOut, pOutImage);
         tu_get_time(endGS_to_RGB );
         check (ret == 0, "Failed to convert result image to RGBA");
 
-        /*log_info("Done with sobel");*/
-        //XXX log profile times
 #ifdef PROFILE
         {
-                /*char * num_treads_as_str = getenv("OMP_NUM_THREADS");*/
-                /*int num_threads;*/
-                /*if (num_treads_as_str != NULL)*/
-                        /*num_threads = atoi(num_treads_as_str);*/
-                /*else*/
-                        /*num_threads = 0;*/
+                int curNbThreads = get_env_num_threads();
 
-                //XXX 1000 is arbitrary, just to get a throughput
+                //XXX 1000 is arbitrary, just to get a non-null throughput
                 log_time(stdout, "RGB to GS", 10000, endRGB_to_GS - startRGB_to_GS, curNbThreads);
                 log_time(stdout, "convolutions", 10000, endConvs - startConvs, curNbThreads);
                 log_time(stdout, "grad norm", 10000, endGradNorm - startGradNorm, curNbThreads);
