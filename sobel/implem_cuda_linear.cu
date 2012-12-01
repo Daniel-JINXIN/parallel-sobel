@@ -89,38 +89,39 @@ __device__ inline int32_t convolution_by_3(struct pixel *pImage, kernel_t kernel
 
 
 __global__ void sobel_unnorm_kernel(struct pixel *pInImageData, uint16_t *pOutImageData,
-                                    uint32_t width, uint32_t height)
+                                    uint32_t width, uint32_t height, int numWorkerThreads)
 {
-    /* Get your pixel number, which is your global threadIdx */
-    uint32_t pxNum = blockIdx.x * blockDim.x + threadIdx.x;
 
-    /* Be careful with borders */
-    if (pxNum > width * height) {
-        return;
+    /* Copy all pixels we are responsible for. The first one is our position in the grid. */
+
+    //XXX: we could be better by doing things more "locally"... But harder
+    for (uint32_t pxNum = blockIdx.x * blockDim.x + threadIdx.x; /* First pixel is my position in the*/
+                  pxNum < width * height; pxNum += numWorkerThreads) {
+
+        /* If we are on a border, do nothing */
+        if (   pxNum < width /* First line */
+                || pxNum % width == 0 /* First column */
+                || pxNum % width == width - 1 /* last column */
+                || pxNum >= (width * (height - 1)) /* Last line */
+           )
+        {
+            pOutImageData[pxNum] = 0; // We could also wait and get the max
+        }
+        else
+        {
+            int32_t gradX = convolution_by_3(pInImageData, kernelX, pxNum, width, height);
+            int32_t gradY = convolution_by_3(pInImageData, kernelY, pxNum, width, height);
+            float gradX_float = (float) gradX;
+            float gradY_float = (float) gradY;
+
+            uint16_t gradNorm = (uint32_t) sqrt(gradX_float*gradX_float + gradY_float*gradY_float);
+
+            pOutImageData[pxNum] = gradNorm;
+        }
     }
 
-    /* If we are on a border, do nothing */
-    if (   pxNum < width /* First line */
-        || pxNum % width == 0 /* First column */
-        || pxNum % width == width - 1 /* last column */
-        || pxNum >= (width * (height - 1)) /* Last line */
-       )
-    {
-        pOutImageData[pxNum] = 0; // We could also wait and get the max
-    }
-    else
-    {
-        int32_t gradX = convolution_by_3(pInImageData, kernelX, pxNum, width, height);
-        int32_t gradY = convolution_by_3(pInImageData, kernelY, pxNum, width, height);
-        float gradX_float = (float) gradX;
-        float gradY_float = (float) gradY;
-
-        uint16_t gradNorm = (uint32_t) sqrt(gradX_float*gradX_float + gradY_float*gradY_float);
-
-        pOutImageData[pxNum] = gradNorm;
-    }
+    //XXX there should be the normalization on the device here, after a sync
     
-    //XXX there should be the normalization on the device here !
 }
 
 
@@ -154,6 +155,14 @@ int sobel(struct image *const pInImage, struct image *pOutImage)
 
         int gridLength = (width * height) / maxLinearThreads +
                         ((width * height) % maxLinearThreads == 0 ? 0 : 1);
+
+        /* If that's too much blocks, reduce, and each thread will handle several pixels
+           (handled in the kernel) */
+        if (gridLength > deviceProp.maxGridSize[0]) {
+            gridLength = deviceProp.maxGridSize[0];
+        }
+
+        uint32_t numWorkerThreads = gridLength * maxLinearThreads;
 
         dim3 nBlocks(gridLength);
 
@@ -199,7 +208,7 @@ int sobel(struct image *const pInImage, struct image *pOutImage)
         /*check_mem(pOutImage->data);*/
 
         /* And launch the kernel */
-        sobel_unnorm_kernel <<< nBlocks, threadsPerBlock >>> (inImageDevice, outImageDevice, width, height);
+        sobel_unnorm_kernel <<< nBlocks, threadsPerBlock >>> (inImageDevice, outImageDevice, width, height, numWorkerThreads);
 
         ret = cudaMemcpy(pUnNormalizedOut, outImageDevice,
                          width * height * sizeof(uint16_t), cudaMemcpyDeviceToHost);
