@@ -13,7 +13,7 @@ HEADERS = $(wildcard *.h)
 TESTS_C = $(wildcard tests/*.c)
 TESTS = $(patsubst %.c, %, $(TESTS_C))
 
-EXES = omp_version seq_version cuda_version
+EXES = omp_version seq_version cuda_version_linear
 
 all: $(EXES)
 
@@ -35,6 +35,9 @@ seq_version: implem_seq.o common.o $(LODEPNG_OBJ) $(HEADERS)
 
 cuda_version: implem_cuda.o common.o $(LODEPNG_OBJ) $(HEADERS)
 	$(LD) $(LDFLAGS) implem_cuda.o common.o $(LODEPNG_OBJ) -o $@
+
+cuda_version_linear: implem_cuda_linear.o common.o $(LODEPNG_OBJ) $(HEADERS)
+	$(LD) $(LDFLAGS) implem_cuda_linear.o common.o $(LODEPNG_OBJ) -o $@
 
 
 # a test file depends on itself AND the corresponding implem in toplevel dir,
