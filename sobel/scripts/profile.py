@@ -64,6 +64,7 @@ for t in tests:
 
     mean_values = []
     for v in Xvalues:
+        print("x value: %d" % v)
         Yvalues = [e[t.keyY] for e in t.measures if e[t.keyX] == v]
         meanY = sum(Yvalues) / len(Yvalues)
         mean_values.append({t.keyX: v, t.keyY: meanY})
@@ -81,6 +82,8 @@ for t in tests:
              color = t.color, linestyle='-', marker='o',
              linewidth=2, label=t.name)
 
+# start from 0, 0, hack.
+plt.plot([0], [0], color = 'white')
 
 
 if keyX == "size":
@@ -95,23 +98,3 @@ else:
 
 plt.legend(loc='best', prop={'size':12})
 plt.show()
-
-
-
-#correspondance_color_files = ""
-
-#for i, fname in enumerate(filenames):
-    #d = json.load(open(fname))
-    #n_iter = [v['nElems'] for v in d]
-    #times = [v['time'] for v in d]
-
-    #plt.plot(n_iter, times, color=colors[i], linestyle='-', marker='o', linewidth=2, label=fname)
-
-
-
-#plt.xlabel("Number of elements in the sum")
-#plt.ylabel("Execution time in seconds")
-#plt.title("Quicksort\n" + correspondance_color_files)
-#plt.legend(loc='best', prop={'size':12})
-
-#plt.show()

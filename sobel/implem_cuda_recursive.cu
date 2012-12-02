@@ -110,7 +110,6 @@ __global__ void sobel_unnorm_kernel(struct pixel *pInImageData, uint16_t *pOutIm
     
 #else
 
-__device__ int alreadywritten = 0; //XXX
 
 __global__ void sobel_unnorm_kernel(struct pixel *pInImageData, uint16_t *pOutImageData,
                                     uint32_t width, uint32_t height, uint32_t basePx)
@@ -144,7 +143,9 @@ __global__ void sobel_unnorm_kernel(struct pixel *pInImageData, uint16_t *pOutIm
 
 
 
-/* This kernel will only handle the normalization */
+/* This kernel will only handle the normalization.
+   The size of the block MUST be a power of two, otherwise the behaviour
+   is undefined (and most probably incorrect). */
 __global__ void norm_image_kernel(uint16_t *pMaxGrads, uint16_t *pNonNormalized, struct pixel *pOutImage,
                                   uint32_t width, uint32_t height, uint32_t basePx)
 {
@@ -190,7 +191,7 @@ __global__ void max_reduction_kernel(uint16_t *pMaxGrads, uint32_t width,
 
     /* For each of the pixels the thread is responsible for */
 
-    /* Each thread copies its pixel */
+    /* Each thread copies its pixel, and maybe more if needed */
     if (pxNum < width * height) {
         sData[tid] = pMaxGrads[pxNum];
     } else {
@@ -206,23 +207,18 @@ __global__ void max_reduction_kernel(uint16_t *pMaxGrads, uint32_t width,
 
     __syncthreads();
 
-        /* Now, reduce in parallel to find the max */
-        for (uint32_t stride = blockDim.x / 2; stride > 0; stride = stride >> 1) {
-            if (tid < stride) { /* If we are on the lowest part of the remaining array */
-                sData[tid] = max(sData[tid], sData[tid + stride]);
-            }
-
-            __syncthreads();
+    /* Now, reduce in parallel to find the max */
+    for (uint32_t stride = blockDim.x / 2; stride > 0; stride = stride >> 1) {
+        if (tid < stride) { /* If we are on the lowest part of the remaining array */
+            sData[tid] = max(sData[tid], sData[tid + stride]);
         }
 
-        if (tid == 0) {
-            pMaxGrads[blockIdx.x] = sData[0];
-        }
+        __syncthreads();
+    }
 
-        /*if (tid == 0) {*/
-            /*pMaxGrads[blockIdx.x] = max(pMaxGrads[blockIdx.x], sData[0]);*/
-        /*}*/
-    /*}*/
+    if (tid == 0) {
+        pMaxGrads[blockIdx.x] = sData[0];
+    }
 
     /* At the end of that kernel, pOutData contains the max value of each block */
 }
@@ -260,16 +256,8 @@ int sobel(struct image *const pInImage, struct image *pOutImage)
 
         /* And number of blocks to cover all pixels */
         int maxConcurrentBlocks = deviceProp.maxGridSize[0];
-        int maxConcurrentThreads = maxConcurrentBlocks * nThreadsPerBlock;
+        int maxConcurrentThreads = maxConcurrentBlocks * maxThreadsPerBlock;
         
-
-
-        //XXX toujours faire attention au cas où pas assez de threads pour
-        //XXX tous les pixels... On ignore pour l'instant, on pourra passer
-        //XXX un baseIndex aux kernels, probablement.
-        /*if (gridLength > deviceProp.maxGridSize[0]) {*/
-
-
         /* Allocate memory on the device for in image, and non-normalized gradient norms. */
         struct pixel *inImageDevice = NULL;
         uint16_t *outNonNormalized = NULL;

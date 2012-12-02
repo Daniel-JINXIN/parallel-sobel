@@ -132,6 +132,7 @@ __global__ void sobel_unnorm_kernel(struct pixel *pInImageData, uint16_t *pOutIm
 __global__ void norm_image_kernel(uint16_t *pInImage, struct pixel *pOutImage, uint16_t maxGrad,
                                   uint32_t width, uint32_t height, int numWorkerThreads)
 {
+    //XXX divergent kernels, not super efficient
     for (uint32_t pxNum = blockIdx.x * blockDim.x + threadIdx.x; /* First pixel is my position in the*/
                   pxNum < width * height; pxNum += numWorkerThreads) {
 
@@ -159,6 +160,41 @@ __global__ void norm_image_kernel(uint16_t *pInImage, struct pixel *pOutImage, u
 
     }
 }
+
+
+
+__global__ max_reduction_kernel(int16_t pInData, int16_t pOutData, uint32_t width,
+                                uint32_t height uint32_t numWorkerThreads)
+{
+    extern __shared__ int16_t sData[]; /* Contains the data for the local reduction */
+
+    uint32_t tid = threadIdx.x;
+
+    /* For each of the pixels the thread is responsible for */
+    for (uint32_t pxNum = blockIdx.x * blockDim.x + threadIdx.x; /* First pixel is my position in the*/
+                  pxNum < width * height; pxNum += numWorkerThreads) {
+
+        /* Each thread copies its pixel */
+        sData[tid] = pInData[pxNum];
+
+        /* Now, reduce in parallel to find the max */
+        for (uint32_t stride = blockDim.x / 2; stride > 0; stride = stride >> 1) {
+            if (tid < stride) {
+                sData[tid] = max(sData[tid], sData[tid + s]);
+            }
+
+            __syncthreads();
+        }
+
+        if (tid == 0) {
+            pOutData[blockIdx.x] = max(pOutData[blockIdx.x], sData[0]);
+        }
+    }
+
+    /* At the end of that kernel, pOutData contains the max value of each block */
+}
+
+
 
 
 
