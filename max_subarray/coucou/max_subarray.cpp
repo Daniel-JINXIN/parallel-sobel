@@ -72,6 +72,7 @@ SubMatrix ComputedMatrix::maxSubarray()
 				max.resize(nb_threads);
 				
 			int workload = height/nb_threads;
+                        workload = workload == 0 ? 1 : workload;
 				
 			#pragma omp for schedule(static, workload)
 				for (int i = 0; i < height; i++) {
@@ -194,6 +195,7 @@ int main(int argc, const char *argv[])
 
 			double timer2 = 0;
 			timer2 = omp_get_wtime();
+#if 0
                         {
                                 int numThreads = atoi(getenv("OMP_NUM_THREADS"));
                                 double t = timer2 - timer1;
@@ -202,6 +204,7 @@ int main(int argc, const char *argv[])
                                 fprintf(stdout, "{\"name\": \"%s\", \"size\": %u, \"nProcs\": %u, \"time\": %lf, \"throughput\": %lf},\n",
                                                 "max subarray laptop", size, numThreads, t, (double)size/t);
                         }
+#endif
 			
 			cout << maxSubarray.toString();
 

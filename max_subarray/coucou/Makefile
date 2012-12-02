@@ -6,11 +6,13 @@ LDFLAGS = -lgomp
 
 
 
-all: max_subarray
+all: max_subarray max_subarray_release
 
 max_subarray: max_subarray.o
 	$(LD) $(LDFLAGS) $^ -o $@
 
+max_subarray_release: max_subarray_release.o
+	$(LD) $(LDFLAGS) $^ -o $@
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $< -o $@

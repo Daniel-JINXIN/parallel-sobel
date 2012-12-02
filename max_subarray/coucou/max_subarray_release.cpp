@@ -72,6 +72,7 @@ SubMatrix ComputedMatrix::maxSubarray()
 				max.resize(nb_threads);
 				
 			int workload = height/nb_threads;
+			workload = workload == 0 ? 1 : workload;
 			
 			#pragma omp for schedule(static, workload)
 				for (int i = 0; i < height; i++) {
