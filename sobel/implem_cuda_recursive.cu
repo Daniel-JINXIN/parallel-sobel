@@ -3,21 +3,10 @@
 
 
 
-/* Pour gérer des images grandes, passer un paramètre nPxPerThreads est chiant, car ça décale
-   tout tout le temps. Mais faut le faire...
-*/
-
-
-
-
-// shared memory does not work
-#define USE_SHARED_MEM 0
-
-
-
 
 /* CUDA is implicitly C++ code, this is needed so out symbols are not mangled */
 extern "C" {
+
 
 #include "dbg.h"
 #include "sobel.h"
@@ -101,16 +90,6 @@ __device__ inline int32_t convolution_by_3(struct pixel *pImage, kernel_t kernel
 
 
 
-#if 0
-__global__ void sobel_unnorm_kernel(struct pixel *pInImageData, uint16_t *pOutImageData,
-                                    uint32_t width, uint32_t height, int numWorkerThreads)
-{
-    return;
-}
-    
-#else
-
-
 __global__ void sobel_unnorm_kernel(struct pixel *pInImageData, uint16_t *pOutImageData,
                                     uint32_t width, uint32_t height, uint32_t basePx)
 {
@@ -119,10 +98,10 @@ __global__ void sobel_unnorm_kernel(struct pixel *pInImageData, uint16_t *pOutIm
 
     /* If we are on a border, do nothing */
     if (pxNum < width /* First line */
-            || pxNum % width == 0 /* First column */
-            || pxNum % width == width - 1 /* last column */
-            || pxNum >= (width * (height - 1)) /* Last line */
-       )
+     || pxNum % width == 0 /* First column */
+     || pxNum % width == width - 1 /* last column */
+     || pxNum >= (width * (height - 1)) /* Last line */
+    )
     {
         pOutImageData[pxNum] = 0;
     }
@@ -139,7 +118,6 @@ __global__ void sobel_unnorm_kernel(struct pixel *pInImageData, uint16_t *pOutIm
     }
 
 }
-#endif
 
 
 
@@ -162,7 +140,7 @@ __global__ void norm_image_kernel(uint16_t *pMaxGrads, uint16_t *pNonNormalized,
             || pxNum >= (width * (height - 1)) /* Last line */
        )
     {
-        //XXX Que faire ici ?
+        /* XXX This is not ideal */
         pOutImage[pxNum].R = 0;
         pOutImage[pxNum].G = 0;
         pOutImage[pxNum].B = 0;
@@ -189,9 +167,8 @@ __global__ void max_reduction_kernel(uint16_t *pMaxGrads, uint32_t width,
     uint32_t pxNum = blockIdx.x * blockDim.x + threadIdx.x;
     uint32_t tid = threadIdx.x;
 
-    /* For each of the pixels the thread is responsible for */
-
-    /* Each thread copies its pixel, and maybe more if needed */
+    /* Each thread copies its pixel, and maybe more if needed.
+       If there is no pixel, then the value 0 is chosen (as it is neutral for a max) */
     if (pxNum < width * height) {
         sData[tid] = pMaxGrads[pxNum];
     } else {
@@ -216,11 +193,13 @@ __global__ void max_reduction_kernel(uint16_t *pMaxGrads, uint32_t width,
         __syncthreads();
     }
 
+
     if (tid == 0) {
         pMaxGrads[blockIdx.x] = sData[0];
     }
 
-    /* At the end of that kernel, pOutData contains the max value of each block */
+    /* At the end of that kernel, pMaxGrads[blockIdx.x] contains the max value of each block.
+       We can recursively call the kernel on the smaller resulting array. */
 }
 
 
@@ -229,7 +208,11 @@ __global__ void max_reduction_kernel(uint16_t *pMaxGrads, uint32_t width,
 
 void log_time(FILE *logFile, char *testName, uint32_t size, double t, int numThreads)
 {
-        //XXX should do something
+        if (logFile == NULL)
+                return;
+
+        fprintf(logFile, "{\"name\": \"%s\", \"size\": %u, \"nProcs\": 1, \"time\": %lf, \"throughput\": %lf},\n",
+                testName, size, t, (double)size/t);
 }
 
 
@@ -240,25 +223,21 @@ int sobel(struct image *const pInImage, struct image *pOutImage)
 
         uint32_t width = pInImage->width;
         uint32_t height = pInImage->height;
+        uint32_t nbPx = width * height;
 
         cudaError_t ret;
         struct cudaDeviceProp deviceProp;
 
-        // We will only use one device, the first one
         ret = cudaGetDeviceProperties(&deviceProp, 0);
 
+
+        /* Get the threading limits of the device */
         int maxThreadsPerBlock = deviceProp.maxThreadsDim[0];
-        int nbPx = width * height;
-
-        /* Number of running threads per block, take care of the case
-           where there are very little pixels */
-        int nThreadsPerBlock = nbPx > maxThreadsPerBlock ? maxThreadsPerBlock : nbPx;
-
-        /* And number of blocks to cover all pixels */
         int maxConcurrentBlocks = deviceProp.maxGridSize[0];
         int maxConcurrentThreads = maxConcurrentBlocks * maxThreadsPerBlock;
         
-        /* Allocate memory on the device for in image, and non-normalized gradient norms. */
+        /* Allocate memory on the device for in image, and non-normalized gradient norms,
+           and copy the input image. */
         struct pixel *inImageDevice = NULL;
         uint16_t *outNonNormalized = NULL;
 
@@ -268,146 +247,91 @@ int sobel(struct image *const pInImage, struct image *pOutImage)
         ret = cudaMalloc((void **)&outNonNormalized, width * height * sizeof(uint16_t));
         check_warn (ret == cudaSuccess, "Failed to allocate memory for out image on the device");
 
-        /* Copy the input image to the device */
         ret = cudaMemcpy(inImageDevice, pInImage->data, width * height * sizeof(struct pixel),
                          cudaMemcpyHostToDevice);
         check_warn (ret == cudaSuccess, "Failed to copy input image to device");
 
+        double afterFirstMemcpys = omp_get_wtime();
 
         /* Now, we need to invoke the sobel kernel, that will make convolutions.
            We must be careful to invoke it as much times as necessary considering
            that there might be more pixels than allocatable threads. */
-        //XXX later
         for (uint32_t basePx = 0; basePx < nbPx; basePx += maxConcurrentThreads) {
 
             /* Don't use more blocks than necessary */
             uint32_t runningThreads = min(nbPx - basePx, maxConcurrentThreads);
-            uint32_t nBlocks = runningThreads / nThreadsPerBlock +
-                              (runningThreads % nThreadsPerBlock == 0 ? 0 : 1);
+            uint32_t nBlocks = runningThreads / maxThreadsPerBlock +
+                              (runningThreads % maxThreadsPerBlock == 0 ? 0 : 1);
 
-            printf("Will call sobel_unnorm_kernel with basePx = %u, nBlocks = %u,"
-                    "nThreadsPerBlock = %u, maxConcurrentThreads = %u\n",
-                    basePx, nBlocks, nThreadsPerBlock, maxConcurrentThreads);
-                                    
-            /* No local memory for this kernel, although it could benefit it.
-               XXX see later ! */
-            sobel_unnorm_kernel <<< nBlocks, nThreadsPerBlock >>> (inImageDevice, outNonNormalized, width, height, basePx);
-            cudaDeviceSynchronize(); //XXX ne devrait pas servir
-        }
-
-        //XXX For debug ppurposes: fihd the real max */
-        {
-            uint16_t *maxes = (uint16_t *)calloc(width * height, sizeof(uint16_t));
-            ret = cudaMemcpy(maxes, outNonNormalized, width * height * sizeof(uint16_t), cudaMemcpyDeviceToHost);
-            check_warn (ret == cudaSuccess, "failed to memcpy");
-
-            for (int i = 0; i < 10; i++) {
-                printf("%u ", maxes[i]);
-            }
-            for (int i = 0; i < width*height; i++) {
-                if (maxes[i] == 1337) {
-                    /*printf("maxes[%d] = %u\n", i, maxes[i]);*/
-                }
-            }
-
-            uint32_t maxPos = 0;
-            uint16_t theMax = 0;
-            for (uint32_t i = 0; i < width * height; i++) {
-                if (maxes[i] > theMax) {
-                    theMax = maxes[i];
-                    maxPos = i;
-                }
-            }
-            printf("The real max is: %u, at %u\n", theMax, maxPos);
+            sobel_unnorm_kernel <<< nBlocks, maxThreadsPerBlock >>>
+                (inImageDevice, outNonNormalized, width, height, basePx);
         }
 
 
-        /* Now, we need to get the maximum gradient norm value located in outNonNormalized.
-           We don't need the input image any longer */
+        /* We don't need the input image any longer */
         cudaFree(inImageDevice);
 
+        /* Allocate memory for maximum gradient reduction, and copy non-normalized data */
+        uint16_t *maxGradsDevice = NULL;
 
-        /* Allocate memory for max grad reduction, and copy non-normalized data */
-        uint16_t *maxGrads = NULL;
-
-        ret = cudaMalloc((void **)&maxGrads, width * height * sizeof(uint16_t));
+        ret = cudaMalloc((void **)&maxGradsDevice, width * height * sizeof(uint16_t));
         check_warn (ret == cudaSuccess, "Failed to allocate memory for out image on the device");
-        ret = cudaMemcpy(maxGrads, outNonNormalized, width * height * sizeof(uint16_t),
+        ret = cudaMemcpy(maxGradsDevice, outNonNormalized, width * height * sizeof(uint16_t),
                          cudaMemcpyDeviceToDevice);
-        check_warn (ret == cudaSuccess, "Failed to copy maxGrads from device to device");
+        check_warn (ret == cudaSuccess, "Failed to copy maxGradsDevice from device to device");
 
-        /* And invoke iteratively out max-reduction kernel */
-        /* Each pass will reduce the number of elements by a factor of nThreadsPerBlock */
-        //XXX Sûr ?
-        //XXX Faire encore attention au nombre de threads trop petit pour le nombre de pixels...
-        //XXX PLUS TARD ! Pour ça, à cet endroit-là, juste gérer ça au moment du load
-        //XXX depuis la mémoire globale: gérer 10 px chacun si nécessaire.
-
-
-        //XXX This must handle the case where there are not enough threads
-        //XXX per pixels.
-        
-
-        uint32_t i = 0;//XXX for debug
+        /* And invoke iteratively our max-reduction kernel. The number of remaining
+           elements is divised by the number of threads per block at each iteration.
+           We must be careful: the reduction kernel only works if the number of threads
+           on each block is a power of 2. */
         uint32_t remainingElems = nbPx;
         while (remainingElems > 1) {
             uint32_t threadsPerBlock = min(remainingElems, maxThreadsPerBlock);
-            /* Be careful, the kernel only works if the number of threads per block is
-               a power of 2 */
             threadsPerBlock = getNextPowerOf2(threadsPerBlock);
-            /* And don't allocate more blocks than possible. If there are too many
-               pixels, some blocks will handle several pixels */
+
+            /* Don't allocate more blocks than possible. If there are too many pixels,
+               some blocks will handle several pixels (handled in the kernel). */
             uint32_t nBlocks = min(remainingElems / threadsPerBlock + (remainingElems % threadsPerBlock == 0 ? 0 : 1),
                                    maxConcurrentBlocks);
             uint32_t nThreads = threadsPerBlock * nBlocks;
             uint32_t nPxPerThread = remainingElems / nThreads + (nbPx % nThreads == 0 ? 0 : 1);
-                                   
             uint32_t sharedMem = threadsPerBlock * sizeof(uint16_t);
 
-            printf("Before invocation n° %d, nBlocks = %u, threadsPerBlock = %u, sharedMem = %u,"
-                    "remainingElems = %u, %u px per thread\n", i, nBlocks, threadsPerBlock, sharedMem,
-                    remainingElems, nPxPerThread);
+            max_reduction_kernel <<< nBlocks, threadsPerBlock, sharedMem >>>
+                            (maxGradsDevice, width, height, nPxPerThread);
 
-            max_reduction_kernel <<< nBlocks, threadsPerBlock, sharedMem >>> (maxGrads, width, height, nPxPerThread);
-
-            remainingElems = remainingElems / threadsPerBlock + (remainingElems % threadsPerBlock == 0 ? 0 : 1);
-            i++;
+            /* One remaining element by running block */
+            remainingElems = nBlocks;
         }
             
 
-        /* For debug, get max */
-        uint16_t maxGrad;
-        ret = cudaMemcpy(&maxGrad, maxGrads, sizeof(int16_t), cudaMemcpyDeviceToHost);
-        check_warn(ret == cudaSuccess, "Failed to memcpy");
-        printf("Max grad : %u\n", maxGrad);
-
-
         //XXX faire un truc pour les bords aussi... padder avec des zéros DANS LA MÉMOIRE ALLOUÉE SUR LE DEVICE
 
-        /* Allocate memory for the final resulting image */
+        /* Allocate memory for the final resulting image, and launch the normalization kernel.
+           As for the convolution kernel, we might have to run it several times on different
+           parts of the image. */
         struct pixel *outNormalizedDevice = NULL;
         ret = cudaMalloc((void **) &outNormalizedDevice, width * height * sizeof(struct pixel));
         check_warn(ret == cudaSuccess, "Failed to allocate memory for outNormalizedDevice");
-
 
         /* Now, it's time to call the kernel that normalises the image gradients and puts it
            into pixels */
         for (uint32_t basePx = 0; basePx < nbPx; basePx += maxConcurrentThreads) {
 
-            printf("Will call norm_image_kernel with basePx = %u\n", basePx);
-
             /* Don't use more blocks than necessary */
             uint32_t runningThreads = min(nbPx - basePx, maxConcurrentThreads);
-            uint32_t nBlocks = runningThreads / nThreadsPerBlock +
-                              (runningThreads % nThreadsPerBlock == 0 ? 0 : 1);
+            uint32_t nBlocks = runningThreads / maxThreadsPerBlock +
+                              (runningThreads % maxThreadsPerBlock == 0 ? 0 : 1);
                                     
-            norm_image_kernel <<< nBlocks, nThreadsPerBlock >>>
-                (maxGrads, outNonNormalized, outNormalizedDevice, width, height, basePx);
+            norm_image_kernel <<< nBlocks, maxThreadsPerBlock >>>
+                (maxGradsDevice, outNonNormalized, outNormalizedDevice, width, height, basePx);
         }
 
-        
-        /* Copy the result from device, and we're done */
+        double beforeLastMemcpy = omp_get_wtime();
 
+        log_time(stdout, "Without memory movements", width*height, beforeLastMemcpy - afterFirstMemcpys, 1);
+
+        /* Copy the result from device, and we're done */
         pOutImage->width = width;
         pOutImage->height = height;
         pOutImage->type = RGBA;
@@ -415,140 +339,11 @@ int sobel(struct image *const pInImage, struct image *pOutImage)
 
         cudaMemcpy(pOutImage->data, outNormalizedDevice, width * height * sizeof(struct pixel),
                    cudaMemcpyDeviceToHost);
-        return 0;
-
-
-
-        //XXX ancien code
-#if 0
-
-        ret = cudaMalloc((void **)&outImageDevice, width * height * sizeof(struct pixel));
-        check_warn (ret == cudaSuccess, "Failed to allocate memory for out image on the device");
-
-        /* We will also need memory for the max-reduction, and the non-normalized gradient norms */
-
-
-
-
-
-        dim3 threadsPerBlock(maxLinearThreads);
-
-        int gridLength = (width * height) / maxLinearThreads +
-                        ((width * height) % maxLinearThreads == 0 ? 0 : 1);
-
-        /* If that's too much blocks, reduce, and each thread will handle several pixels
-           (handled in the kernel) */
-        if (gridLength > deviceProp.maxGridSize[0]) {
-            gridLength = deviceProp.maxGridSize[0];
-        }
-
-        uint32_t numWorkerThreads = gridLength * maxLinearThreads;
-
-        dim3 nBlocks(gridLength);
-
-
-        printf("%d blocks of %d threads each, for %d total worker threads, and %d pixels\n",
-                gridLength, maxLinearThreads, gridLength * maxLinearThreads, width*height);
-
-
-        struct pixel *inImageDevice;
-        uint16_t *outImageDevice;
-        struct pixel *outNormalizedDevice;
-
-        /* Allocate memory on the device for both images (in and out) */
-        ret = cudaMalloc((void **)&inImageDevice, width * height * sizeof(struct pixel));
-        check_warn (ret == cudaSuccess, "Failed to allocate memory for in image on the device");
-
-        ret = cudaMalloc((void **)&outImageDevice, width * height * 4 * sizeof(uint16_t));
-        check_warn (ret == cudaSuccess, "Failed to allocate memory for out image on the device");
-
-        ret = cudaMalloc((void **)&outNormalizedDevice, width * height * sizeof(struct pixel));
-        check_warn (ret == cudaSuccess, "Failed to allocate memory for out normalized, image on the device");
-
-        /* Copy The input image on the device */
-        ret = cudaMemcpy(inImageDevice, pInImage->data, width * height * sizeof(struct pixel),
-                         cudaMemcpyHostToDevice);
-        check_warn (ret == cudaSuccess, "Failed to copy the image to the device");
-
-
-        /* Unnormalized version */
-        uint16_t *pUnNormalizedOut = NULL;
-        pUnNormalizedOut = (uint16_t *)calloc(width*height, sizeof(uint16_t));
-
-        /* Normalized output */
-        //XXX
-        struct pixel *pNormalizedOut = NULL;
-        pNormalizedOut = (struct pixel *)calloc(width*height, sizeof(struct pixel));
-
-        /* Allocate memory for the resulting image */
-        pOutImage->width = pInImage->width;
-        pOutImage->height = pInImage->height;
-        pOutImage->type = RGBA;
-        pOutImage->data = (unsigned char*)calloc(pOutImage->width * pOutImage->height, sizeof(struct pixel));
-        /*check_mem(pOutImage->data);*/
-
-        /* And launch the kernel */
-        sobel_unnorm_kernel <<< nBlocks, threadsPerBlock >>> (inImageDevice, outImageDevice, width, height, numWorkerThreads);
-
-        ret = cudaMemcpy(pUnNormalizedOut, outImageDevice,
-                         width * height * sizeof(uint16_t), cudaMemcpyDeviceToHost);
-        check_warn (ret == cudaSuccess, "Kernel failed: %s", cudaGetErrorString(ret));
-
-
-        /* Normalize, on CPU for the moment */
-        uint16_t maxGrad = 0;
-        //XXX maxPos for debug only
-        uint32_t maxPos = 0;
-        for (uint32_t i = 0; i < width*height; i++) {
-                if (pUnNormalizedOut[i] > maxGrad) {
-                        maxGrad = pUnNormalizedOut[i];
-                        maxPos = i;
-                }
-        }
-        printf("Max: %u, at %u\n", maxGrad, maxPos);
-
-#if 1
-        //XXX this should NOT be necessary
-        ret = cudaMemcpy(outImageDevice, pUnNormalizedOut,
-                         width * height * sizeof(uint16_t), cudaMemcpyHostToDevice);
-
-        /* Normalization kernel */
-        norm_image_kernel <<< nBlocks, threadsPerBlock >>> (outImageDevice, outNormalizedDevice,
-                                                            maxGrad, width, height, numWorkerThreads);
-
-
-        cudaMemcpy(pOutImage->data, (unsigned char *) outNormalizedDevice,
-                   width*height*sizeof(struct pixel), cudaMemcpyDeviceToHost);
-
-        for (int i = 0; i < 20; i++) {
-            printf("%d ", pOutImage->data[i]);
-        }
-#else
-
-        for (uint32_t i = 0; i < width*height; i++) {
-                unsigned char greyVal = (255 * pUnNormalizedOut[i]) / maxGrad;
-                pOutImage->data[4*i] = greyVal;
-                pOutImage->data[4*i + 1] = greyVal;
-                pOutImage->data[4*i + 2] = greyVal;
-                pOutImage->data[4*i + 3] = 255; /* full opacity */
-        }
-#endif
-
-
-
-
-        cudaFree(inImageDevice);
-        cudaFree(outImageDevice);
         cudaFree(outNormalizedDevice);
-        return 0;
-        //XXX need a cleanup for image in case of failure.
+        cudaFree(outNonNormalized);
+        cudaFree(maxGradsDevice);
 
-/*error:*/
-        /*cudaFree(inImageDevice);*/
-        /*cudaFree(outImageDevice);*/
-        /*free_and_null(pOutImage->data);*/
-        /*return -1;*/
-#endif /* old code */
+        return 0;
 }
 
 
