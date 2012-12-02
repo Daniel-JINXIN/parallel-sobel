@@ -1,7 +1,7 @@
 CC=gcc
 LD=gcc
 NVCC=nvcc
-NVCCFLAGS = -c
+NVCCFLAGS = -c -arch=sm_11
 INCLUDES = -I. -I./third_party/lodepng/
 #XXX: -std=gnu99 for PAPI only, go back to c99 later !
 CFLAGS = -O3 -std=gnu99 -Wall -Wextra -c -fopenmp $(INCLUDES) -DPROFILE
