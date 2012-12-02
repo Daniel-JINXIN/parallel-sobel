@@ -13,7 +13,7 @@ HEADERS = $(wildcard *.h)
 TESTS_C = $(wildcard tests/*.c)
 TESTS = $(patsubst %.c, %, $(TESTS_C))
 
-EXES = omp_version seq_version cuda_version_linear
+EXES = omp_version seq_version cuda_version_recursive
 
 all: $(EXES)
 
@@ -23,6 +23,7 @@ tests: build_tests
 build_tests: $(TESTS)
 
 dev: CFLAGS = -g -O0 -std=gnu99 -Wall -Wextra -c -fopenmp $(INCLUDES)
+dev: NVCCFLAGS = -c -arch=sm_11 -g
 dev: all
 
 LODEPNG_OBJ = ./third_party/lodepng/lodepng.o
@@ -39,6 +40,8 @@ cuda_version: implem_cuda.o common.o $(LODEPNG_OBJ) $(HEADERS)
 cuda_version_linear: implem_cuda_linear.o common.o $(LODEPNG_OBJ) $(HEADERS)
 	$(LD) $(LDFLAGS) implem_cuda_linear.o common.o $(LODEPNG_OBJ) -o $@
 
+cuda_version_recursive: implem_cuda_recursive.o common.o $(LODEPNG_OBJ) $(HEADERS)
+	$(LD) $(LDFLAGS) implem_cuda_recursive.o common.o $(LODEPNG_OBJ) -o $@
 
 # a test file depends on itself AND the corresponding implem in toplevel dir,
 # common.c, and lodepng. But it includes C files, to no need to link it
