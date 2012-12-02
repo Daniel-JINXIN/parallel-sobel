@@ -1,0 +1,4 @@
+[{"name": "max subarray laptop", "size": 1000000, "nProcs": 1, "time": 2.014389, "throughput": 496428.502230},
+{"name": "max subarray laptop", "size": 1000000, "nProcs": 2, "time": 1.503886, "throughput": 664944.152777},
+{"name": "max subarray laptop", "size": 1000000, "nProcs": 3, "time": 1.203250, "throughput": 831082.271511},
+{"name": "max subarray laptop", "size": 1000000, "nProcs": 4, "time": 1.091699, "throughput": 916003.007832}]
