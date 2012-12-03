@@ -4,7 +4,7 @@ NVCC=nvcc
 NVCCFLAGS = -c -arch=sm_11
 INCLUDES = -I. -I./third_party/lodepng/
 #XXX: -std=gnu99 for PAPI only, go back to c99 later !
-CFLAGS = -O3 -std=gnu99 -Wall -Wextra -c -fopenmp $(INCLUDES) -DPROFILE
+CFLAGS = -O3 -std=gnu99 -Wall -Wextra -c -fopenmp $(INCLUDES)
 LDFLAGS = -lgomp -lm -lcudart
 
 # We won't be fine-grained in dependance to headers and consider

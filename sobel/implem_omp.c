@@ -8,6 +8,15 @@
 #include "sobel.h"
 
 
+/* Return the norm2 of a vector */
+static inline int16_t norm2(int16_t x, int16_t y)
+{
+        return sqrt(x*x + y*y);
+}
+
+
+
+
 
 /*
  * Simple initialiszation of the X-direction gradient kernel
@@ -180,18 +189,93 @@ error:
 }
 
 
-/* Return the norm2 of a vector */
-static inline int16_t norm2(int16_t x, int16_t y)
+
+int convolution3_both(struct image *const pInImage, struct matrix *pOutMatrix, int16_t *pMax)
 {
-        return sqrt(x*x + y*y);
+        check_null(pInImage);
+        check_null(pOutMatrix);
+        check_warn(pOutMatrix->data == NULL, "Overwrite non-null pointer possible leak");
+{
+        kernel_t kernelX, kernelY;
+        initKernelX(kernelX);
+        initKernelY(kernelY);
+
+        /* First, allocate memory for the outMatrix, and set its features */
+        pOutMatrix->width = pInImage->width;
+        pOutMatrix->height = pInImage->height;
+        pOutMatrix->data = calloc(pInImage->width * pInImage->height, sizeof(int16_t));
+        check_mem(pOutMatrix->data);
+
+        int16_t globMax = 0;
+
+
+        /* Make the convolution where it's possible */
+#pragma omp parallel shared (pOutMatrix, globMax)
+        {
+                int16_t locMax = 0;
+#pragma omp for
+        for (uint32_t row = 1; row < pInImage->height - 1; row++) {
+                for (uint32_t col = 1; col < pInImage->width - 1; col++) {
+                        int16_t gradX, gradY;
+                        convolution_3_by_3(pInImage, kernelX, row, col, &gradX);
+                        convolution_3_by_3(pInImage, kernelY, row, col, &gradY);
+
+                        int16_t norm = norm2(gradX, gradY);
+                        pOutMatrix->data[row*pOutMatrix->width + col] = norm;
+                        
+                        if (norm > locMax) {
+                                locMax = norm;
+                        }
+                }
+        }
+
+#pragma omp critical
+        {
+                if (locMax > globMax) {
+                        globMax = locMax;
+                }
+        }
+        } /* omp parallel */
+
+        *pMax = globMax;
+
+
+
+        /* Fill the missing rows with what we arbitrarily decided. Be careful,
+         * corners cannot be filled yet, so from 1 to width - 1. */
+#pragma omp parallel for shared(pOutMatrix)
+        for (uint32_t col = 1; col < pOutMatrix->width - 1; col++) {
+                pOutMatrix->data[col] = pOutMatrix->data[pOutMatrix->width + 1];
+
+                uint32_t startBeforeLastRow = pOutMatrix->width * (pOutMatrix->height - 2);
+                uint32_t startLastRow = pOutMatrix->width * (pOutMatrix->height - 1);
+                pOutMatrix->data[startLastRow + col] = pOutMatrix->data[startBeforeLastRow + col];
+        }
+
+        /* Now first and last columns, including corners. Iterate row by row. */
+#pragma omp parallel for shared(pOutMatrix)
+        for (uint32_t startRow = 0; startRow < pOutMatrix->height; startRow += pOutMatrix->width) {
+                pOutMatrix->data[startRow] = pOutMatrix->data[startRow + 1];
+
+                pOutMatrix->data[startRow + pOutMatrix->width - 1] =
+                        pOutMatrix->data[startRow + pOutMatrix->width - 2];
+        }
+
+        return 0;
+error:
+        reset_matrix(pOutMatrix);
+        return -1;
+}
 }
 
 
 
 
+
 /* Works on GreyScale images */
-static inline void normalize_matrix_to_image(struct matrix *const pMat, struct image *pImg)
+static inline void normalize_matrix_to_image(struct matrix *const pMat, struct image *pImg, int16_t maxGrad)
 {
+#if 0
         int16_t max = ~0;
         int16_t loc_max = ~0; // min value
 
@@ -214,12 +298,13 @@ static inline void normalize_matrix_to_image(struct matrix *const pMat, struct i
                 }
         } /* end of critical */
         } /* end of parallel */
+#endif
 
 
 
 #pragma omp parallel for shared(pImg)
         for (uint32_t px = 0; px < pMat->width * pMat->height; px++) {
-                pImg->data[px] = (unsigned char) ((pMat->data[px] * 255) / max);
+                pImg->data[px] = (unsigned char) ((pMat->data[px] * 255) / maxGrad);
         }
 
 
@@ -259,7 +344,7 @@ int gradient_norm(struct matrix *const pInMatrixX, struct matrix *const pInMatri
                 unNormalizedGradient.data[px] = norm2(pInMatrixX->data[px], pInMatrixY->data[px]);
         }
 
-        normalize_matrix_to_image(&unNormalizedGradient, pOutImage);
+        /*normalize_matrix_to_image(&unNormalizedGradient, pOutImage);*/
 
         return 0;
 error:
@@ -382,18 +467,27 @@ int sobel(struct image *const pInImage, struct image *pOutImage)
         
         tu_get_time(startConvs );
 
+#if 0
         ret = convolution3(&greyScaleImageIn, kernelX, &gradX);
         check (ret == 0, "Failed to compute X gradient");
 
         ret = convolution3(&greyScaleImageIn, kernelY, &gradY);
         check (ret == 0, "Failed to compute Y gradient");
+#endif
+        int16_t gradMax = 0;
+        ret = convolution3_both(&greyScaleImageIn, &gradX, &gradMax);
+        check (ret == 0, "Failed to compute X gradient");
+
+        normalize_matrix_to_image(&gradX, &greyScaleImageOut, gradMax);
 
         tu_get_time(endConvs );
 
+#if 0
         tu_get_time(startGradNorm );
         ret = gradient_norm(&gradX, &gradY, &greyScaleImageOut);
         tu_get_time(endGradNorm );
         check (ret == 0, "Failed to compute gradieng norm");
+#endif
 
 
         tu_get_time(startGS_to_RGB );
