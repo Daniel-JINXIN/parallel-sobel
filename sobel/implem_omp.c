@@ -275,6 +275,10 @@ error:
 /* Works on GreyScale images */
 static inline void normalize_matrix_to_image(struct matrix *const pMat, struct image *pImg, int16_t maxGrad)
 {
+        pImg->width  = pMat->width;
+        pImg->height = pMat->height;
+        pImg->type   = GreyScale;
+        pImg->data   = calloc(pImg->width * pImg->height, sizeof(unsigned char));
 #if 0
         int16_t max = ~0;
         int16_t loc_max = ~0; // min value
