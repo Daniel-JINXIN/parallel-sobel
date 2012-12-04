@@ -1,0 +1,19 @@
+
+ Written by Cyril Cousinou and Yoann Ricordel 
+ Final version submitted on the 12/03/12 
+
+
+To ensure a proper working of the attached program:
+	
+	1] Extract the archive in a folder on the Gothmog computer
+	
+	2] Compile the files just by using the "make" command (while being in the same folder as before)
+	
+	3] Use the program by using the command "OMP_NUM_THREADS=X ./max_subarray Tests/test_input_Y.in"
+	where X is the number of threads you want to use and Y the size of the square matrix you ish to 
+	compute (remember to make sure the file exists before, or the program will abort)	
+	
+N.B.: You can compute multiple files in just one command, e.g. "OMP_NUM_THREADS=16 ./max_subarray 
+Tests/test_input_250.in Tests/test_input_500.in Tests/test_input_1000.in"
+
+N.B.: In the current version, this program  only runs on Gothmog
