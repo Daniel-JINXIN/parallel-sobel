@@ -1,71 +1,111 @@
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////// Written by Cyril Cousinou and Yoann Ricordel ///////////////////////////
+////////////////////////////// Final version submitted on the 12/03/12 //////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/*Include all the required librairies*/
 #include <iostream>
 #include <fstream>
 #include <vector>
 #include <sstream>
+#include <omp.h>
 
 #include "max_subarray.hpp"
 
 using namespace std;
 
-
+/*Declarations of functions*/
 void print_matrix(vector<vector<int>> mat);
 vector<vector<int>> parseFile(string fileName);
 Matrix computeCumulMatrix(const Matrix& mat);
+std::vector<int> cumulLine(const std::vector<int>& line);
 
-
-SubMatrix::SubMatrix(int _startX, int _endX, int _startY, int _endY, int _sum)
-        : startX(_startX), endX(_endX), startY(_startY), endY(_endY), sum(_sum) {}
-
-
+/*Constructor and destructor of the Matrix class*/
 Matrix::Matrix() {}
 Matrix::~Matrix() {}
 
 
+SubMatrix::SubMatrix()
+        : startX(0), endX(0), startY(0), endY(0), sum(-32001) {}
 
-ComputedMatrix::ComputedMatrix(std::vector<std::vector<int>> _data)
-        : Matrix(_data)
+SubMatrix::SubMatrix(int _startX, int _endX, int _startY, int _endY, int _sum)
+        : startX(_startX), endX(_endX), startY(_startY), endY(_endY), sum(_sum) {}
+
+        Matrix::Matrix(vector<vector<int>> _data)
+: height(_data.size()), width(_data[1].size()), data(_data)
+{}
+
+        Matrix::Matrix(const Matrix& m)
+: height(m.height), width(m.width), data(m.data)
+{
+}
+
+/*Constructor and destructor of the ComputedMatrix class*/
+        ComputedMatrix::ComputedMatrix(std::vector<std::vector<int>> _data)
+: Matrix(_data)
 {
         cumulMatrix = computeCumulMatrix(*this);
 }
 
-
 ComputedMatrix::~ComputedMatrix() {}
 
 
+std::string SubMatrix::toString()
+{
+        std::stringstream s_str;
 
+        s_str << startX << " " << startY << " " << endX << " " << endY << endl;
+        return s_str.str();
+}
 
 
 SubMatrix ComputedMatrix::maxSubarray()
 {
-        SubMatrix max(0, 0, 0, 0, -32001);
-// omp parallel for ici
-        for (int i = 0; i < height; i++) {
-                for (int j = i; j < height; j++) {
-                        SubMatrix tmp_max = kandane(i, j);
-                        if (tmp_max.sum > max.sum) {
-                                max = tmp_max;
+        std::vector<SubMatrix> max;
+
+#pragma omp parallel shared(max)
+        {
+                int nb_threads = omp_get_num_threads();
+
+                /* We don't want the vector to be resized by each thread */
+#pragma omp single
+                max.resize(nb_threads);
+
+#pragma omp for schedule(dynamic, 1)
+                for (int i = 0; i < height; i++) {
+                        for (int j = i; j < height; j++) {
+
+                                SubMatrix local_max = kandane(i, j);
+
+                                int id = omp_get_thread_num();
+
+                                /* Update the maximum sum, local to the thread, if relevant */
+                                if (local_max.sum > max[id].sum) {	
+                                        max[id] = local_max;
+                                }
                         }
                 }
         }
 
-        return max;
-}
+        SubMatrix global_max(0, 0, 0, 0, -32001);
 
-
-
-void print_line(std::vector<int> line)
-{
-        for (unsigned int i = 0; i < line.size(); i++) {
-                cout << line[i] << " ";
+        /* Select the maximum subarray between the local ones of each thread */
+        for (unsigned int k = 0; k < max.size(); k++) {
+                if (max[k].sum > global_max.sum) {
+                        global_max = max[k];
+                }						
         }
-}
 
+        return global_max;
+}
 
 
 SubMatrix ComputedMatrix::kandane(int startLine, int endLine)
 {
         vector<int> line(cumulMatrix[endLine]);
 
+        /* Computes the relevant line in which to search a maximum subarray */
+        /* with help of the derivative matrix */
         if (startLine != 0) {
                 for (unsigned int i = 0; i < line.size(); i++) {
                         line[i] -= cumulMatrix[startLine-1][i];
@@ -80,14 +120,14 @@ SubMatrix ComputedMatrix::kandane(int startLine, int endLine)
 }
 
 
-
-
 SubMatrix ComputedMatrix::kandane(vector<int> line)
 {
         SubMatrix max(0, 0, 0, 0, -32001);
         int tmp_max_sum = 0;
         int tmp_start = 0;
 
+        /* Computes the sum of all subarrays of a line while selecting the maximum one */
+        /* If a sum becomes negative, we switch to the next subarray */
         for (unsigned int tmp_end = 0; tmp_end < line.size(); tmp_end++) {
                 tmp_max_sum += line[tmp_end];
                 if (tmp_max_sum > max.sum) {
@@ -106,39 +146,22 @@ SubMatrix ComputedMatrix::kandane(vector<int> line)
 }
 
 
-
-
-std::string SubMatrix::toString()
-{
-        std::stringstream s_str;
-
-        s_str << "(" << startX << ", " << endX << "), (" << startY << ", " << endY << "), sum = " << sum;
-        return s_str.str();
-}
-
-
-Matrix::Matrix(vector<vector<int>> _data)
-        : height(_data.size()), width(_data[1].size()), data(_data)
-{}
-
-Matrix::Matrix(const Matrix& m)
-        : height(m.height), width(m.width), data(m.data)
-{
-}
-
-
-
-// Si c'est trop lent, essayer de tranposer la matrice pour la parcourir en lignes.
-Matrix computeCumulMatrix(const Matrix& mat)
-{
-        /* Column by column for parallelism */
+Matrix computeCumulMatrix(const Matrix& mat) {
         int matSize = mat.getWidth();
 
         Matrix cumulMat(mat);
 
-        for (int col = 0; col < matSize; col++) {
-                for (int line = 1; line < matSize; line++) {
-                        cumulMat.setDataAt(line, col, cumulMat.getDataAt(line-1, col) + mat.getDataAt(line, col));
+#pragma omp parallel shared(cumulMat) 
+        {
+                int workload = matSize/omp_get_num_threads();
+                if (workload == 0) 
+                        workload = 1;	
+
+#pragma omp for schedule(static, workload)
+                for (int col = 0; col < matSize; col++) {
+                        for (int line = 1; line < matSize; line++) {
+                                cumulMat.setDataAt(line, col, cumulMat.getDataAt(line-1, col) + mat.getDataAt(line, col));
+                        }
                 }
         }
 
@@ -146,55 +169,42 @@ Matrix computeCumulMatrix(const Matrix& mat)
 }
 
 
-
-
-
-
 int main(int argc, const char *argv[])
 {
-        if (argc != 2) {
+        /*Check the arguments are correctly entered*/
+        if (argc < 2) {
                 printf("Usage: %s fileName\n", argv[0]);
                 exit(1);
         }
 
-        string fileName = argv[1];
-        vector<vector<int>> matAsVect;
-        try {
-                matAsVect = parseFile(fileName);
-        } catch (const std::exception &ex) {
-                cout << "Could not parse file " << fileName << endl;
-                throw;
+        /* Loop on the files entered as arguments */	
+        for (int i = 1; i < argc; i++) {
+
+                /*Parse the file, throwing an exception if the file does not exist*/
+                string fileName = argv[i];
+                vector<vector<int>> matAsVect;
+                try {
+                        matAsVect = parseFile(fileName);
+                } catch (const std::exception &ex) {
+                        cout << "Could not parse file " << fileName << endl;
+                        throw;
+                }
+
+                /* Build an object from the parsed matrix on which to apply the kandane algorithm*/
+                ComputedMatrix mat(matAsVect);
+
+
+                /* Find the maximum subarray of the original matrix...*/
+                SubMatrix maxSubarray = mat.maxSubarray();
+
+                /*...and print it out on the console*/
+                cout << maxSubarray.toString();
         }
-
-
-        ComputedMatrix mat(matAsVect);
-
-        SubMatrix maxSubarray = mat.maxSubarray();
-        print_matrix(mat.getData());
-        cout << endl;
-        cout << maxSubarray.toString() << endl;
 
         return 0;
 }
 
 
-
-
-
-void print_matrix(vector<vector<int>> mat)
-{
-        for (auto& v : mat) {
-                for (auto& item : v) {
-                        cout << item << " ";
-                }
-                cout << endl;
-        }
-}
-
-
-
-
-/* Can throw exceptions */
 vector<vector<int>> parseFile(string fileName)
 {
         int matSize = 0;

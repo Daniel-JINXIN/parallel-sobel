@@ -1,16 +1,15 @@
-CXX ?= g++-4.7
-CXXFLAGS = -Wall -Wextra -O2 -g -std=c++11 -c
+CXX ?= g++
+CXXFLAGS = -Wall -Wextra -O2 -g -std=c++11 -c -fopenmp
 
-LD = g++-4.7
-LDFLAGS = 
+LD = g++
+LDFLAGS = -lgomp
 
 
 
 all: max_subarray
 
 max_subarray: max_subarray.o
-	$(LD) $^ -o $@
-
+	$(LD) $(LDFLAGS) $^ -o $@
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $< -o $@
