@@ -120,9 +120,6 @@ static inline void convolution_3_by_3(struct image *const pInImage, kernel_t ker
 
 
 /*
- * XXX on pourrait aussi étendre virtuellement la matrice de base avec des 0 sur
- * XXX les bords. Ca devrait marcher, et c'est plus propre. Peut-être pas le plus
- * XXX important pour l'instant.
  ***** Edge conditions *****
  * We see from the above formula that there is a problem for i = 0, j = 0, i = M, j = N
  * where the image is of size MxN. We will simply ignore them while computing the
@@ -138,59 +135,7 @@ static inline void convolution_3_by_3(struct image *const pInImage, kernel_t ker
  *    ? ? ? ? ?                                           7 7 8 9 9
  *                                                      
  */
-int convolution3(struct image *const pInImage, kernel_t kernel, struct matrix *pOutMatrix)
-{
-        check_null(pInImage);
-        check_null(pOutMatrix);
-        check_warn(pOutMatrix->data == NULL, "Overwrite non-null pointer possible leak");
-{
-
-        /* First, allocate memory for the outMatrix, and set its features */
-        pOutMatrix->width = pInImage->width;
-        pOutMatrix->height = pInImage->height;
-        pOutMatrix->data = calloc(pInImage->width * pInImage->height, sizeof(int16_t));
-        check_mem(pOutMatrix->data);
-
-
-        /* Make the convolution where it's possible */
-#pragma omp parallel for shared (pOutMatrix)
-        for (uint32_t row = 1; row < pInImage->height - 1; row++) {
-                for (uint32_t col = 1; col < pInImage->width - 1; col++) {
-                        convolution_3_by_3(pInImage, kernel, row, col,
-                                        &pOutMatrix->data[row*pOutMatrix->width + col]);
-                }
-        }
-
-        /* Fill the missing rows with what we arbitrarily decided. Be careful,
-         * corners cannot be filled yet, so from 1 to width - 1. */
-#pragma omp parallel for shared(pOutMatrix)
-        for (uint32_t col = 1; col < pOutMatrix->width - 1; col++) {
-                pOutMatrix->data[col] = pOutMatrix->data[pOutMatrix->width + 1];
-
-                uint32_t startBeforeLastRow = pOutMatrix->width * (pOutMatrix->height - 2);
-                uint32_t startLastRow = pOutMatrix->width * (pOutMatrix->height - 1);
-                pOutMatrix->data[startLastRow + col] = pOutMatrix->data[startBeforeLastRow + col];
-        }
-
-        /* Now first and last columns, including corners. Iterate row by row. */
-#pragma omp parallel for shared(pOutMatrix)
-        for (uint32_t startRow = 0; startRow < pOutMatrix->height; startRow += pOutMatrix->width) {
-                pOutMatrix->data[startRow] = pOutMatrix->data[startRow + 1];
-
-                pOutMatrix->data[startRow + pOutMatrix->width - 1] =
-                        pOutMatrix->data[startRow + pOutMatrix->width - 2];
-        }
-
-        return 0;
-error:
-        reset_matrix(pOutMatrix);
-        return -1;
-}
-}
-
-
-
-int convolution3_both(struct image *const pInImage, struct matrix *pOutMatrix, int16_t *pMax)
+int convolution3(struct image *const pInImage, struct matrix *pOutMatrix, int16_t *pMax)
 {
         check_null(pInImage);
         check_null(pOutMatrix);
@@ -279,32 +224,6 @@ static inline void normalize_matrix_to_image(struct matrix *const pMat, struct i
         pImg->height = pMat->height;
         pImg->type   = GreyScale;
         pImg->data   = calloc(pImg->width * pImg->height, sizeof(unsigned char));
-#if 0
-        int16_t max = ~0;
-        int16_t loc_max = ~0; // min value
-
-
-#pragma omp parallel firstprivate(loc_max) shared(max)
-        {
-#pragma omp for /* Get the max on our chunk */
-        for (uint32_t px = 0; px < pMat->width * pMat->height; px++) {
-                if (pMat->data[px] > loc_max) {
-                        loc_max = pMat->data[px];
-                }
-        }
-
-#pragma omp critical /* And get the max of all loc_maxes */
-        {
-                for (int i = 0; i < omp_get_num_threads(); i++) {
-                        if (loc_max > max) {
-                                max = loc_max;
-                        }
-                }
-        } /* end of critical */
-        } /* end of parallel */
-#endif
-
-
 
 #pragma omp parallel for shared(pImg)
         for (uint32_t px = 0; px < pMat->width * pMat->height; px++) {
@@ -437,13 +356,6 @@ error:
 
 int sobel(struct image *const pInImage, struct image *pOutImage)
 {
-#ifdef PROFILE
-        double startRGB_to_GS, endRGB_to_GS;
-        double startConvs, endConvs;
-        double startGradNorm, endGradNorm;
-        double startGS_to_RGB, endGS_to_RGB;
-#endif
-
         check_null(pInImage);
         check_null(pOutImage);
         check (pOutImage->data == NULL, "Overwriting non-null ptr, possible leak");
@@ -457,9 +369,7 @@ int sobel(struct image *const pInImage, struct image *pOutImage)
         kernel_t kernelY;
 
         
-        tu_get_time(startRGB_to_GS );
         ret = RGBA_to_greyScale(pInImage, &greyScaleImageIn);
-        tu_get_time(endRGB_to_GS );
         check (ret == 0, "Failed to convert to greyscale");
 
 
@@ -471,46 +381,17 @@ int sobel(struct image *const pInImage, struct image *pOutImage)
         
         tu_get_time(startConvs );
 
-#if 0
-        ret = convolution3(&greyScaleImageIn, kernelX, &gradX);
-        check (ret == 0, "Failed to compute X gradient");
-
-        ret = convolution3(&greyScaleImageIn, kernelY, &gradY);
-        check (ret == 0, "Failed to compute Y gradient");
-#endif
         int16_t gradMax = 0;
-        ret = convolution3_both(&greyScaleImageIn, &gradX, &gradMax);
+        ret = convolution3(&greyScaleImageIn, &gradX, &gradMax);
         check (ret == 0, "Failed to compute X gradient");
 
         normalize_matrix_to_image(&gradX, &greyScaleImageOut, gradMax);
 
         tu_get_time(endConvs );
 
-#if 0
-        tu_get_time(startGradNorm );
-        ret = gradient_norm(&gradX, &gradY, &greyScaleImageOut);
-        tu_get_time(endGradNorm );
-        check (ret == 0, "Failed to compute gradieng norm");
-#endif
 
-
-        tu_get_time(startGS_to_RGB );
         ret = greyScale_to_RGBA(&greyScaleImageOut, pOutImage);
-        tu_get_time(endGS_to_RGB );
         check (ret == 0, "Failed to convert result image to RGBA");
-
-#ifdef PROFILE
-        {
-                int curNbThreads = get_env_num_threads();
-
-                //XXX 1000 is arbitrary, just to get a non-null throughput
-                log_time(stdout, "RGB to GS", 10000, endRGB_to_GS - startRGB_to_GS, curNbThreads);
-                log_time(stdout, "convolutions", 10000, endConvs - startConvs, curNbThreads);
-                log_time(stdout, "grad norm", 10000, endGradNorm - startGradNorm, curNbThreads);
-                log_time(stdout, "GS to RGB", 10000, endGS_to_RGB - startGS_to_RGB, curNbThreads);
-        }
-#endif
-
 
         reset_matrix(&gradX);
         reset_matrix(&gradY);

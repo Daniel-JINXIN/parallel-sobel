@@ -131,8 +131,6 @@ __global__ void norm_image_kernel(uint16_t *pMaxGrads, uint16_t *pNonNormalized,
 
     uint16_t maxGrad = pMaxGrads[0];
 
-    //XXX divergent kernels, not super efficient
-
     /* If we are on a border, do nothing */
     if (   pxNum < width /* First line */
             || pxNum % width == 0 /* First column */
@@ -140,7 +138,6 @@ __global__ void norm_image_kernel(uint16_t *pMaxGrads, uint16_t *pNonNormalized,
             || pxNum >= (width * (height - 1)) /* Last line */
        )
     {
-        /* XXX This is not ideal */
         pOutImage[pxNum].R = 0;
         pOutImage[pxNum].G = 0;
         pOutImage[pxNum].B = 0;
@@ -304,8 +301,6 @@ int sobel(struct image *const pInImage, struct image *pOutImage)
             remainingElems = nBlocks;
         }
             
-
-        //XXX faire un truc pour les bords aussi... padder avec des zéros DANS LA MÉMOIRE ALLOUÉE SUR LE DEVICE
 
         /* Allocate memory for the final resulting image, and launch the normalization kernel.
            As for the convolution kernel, we might have to run it several times on different

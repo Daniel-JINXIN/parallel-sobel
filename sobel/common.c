@@ -110,8 +110,6 @@ int main(int argc, const char *argv[])
         const char *inFileName = argv[1];
         const char *outFileName = argv[2];
 
-        //XXX we could just check that we have rights on the files right at the beginning
-
         struct image inImage = IMAGE_INITIALIZER;
         struct image outImage = IMAGE_INITIALIZER;
 
@@ -125,10 +123,6 @@ int main(int argc, const char *argv[])
         endTime = omp_get_wtime();
         check (ret == 0, "Sobel edge detection failed");
         log_time(logFile, logName, inImage.width * inImage.height, endTime - startTime, num_threads);
-
-
-        //XXX
-        printf("With %d threads, completed in %lf sec\n", num_threads,  endTime - startTime);
 
         ret = encode_image(outFileName, &outImage);
         check (ret == 0, "Error while storing image to disk");
